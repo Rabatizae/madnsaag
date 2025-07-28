@@ -89,7 +89,7 @@ class TransactionService {
     this.chainId = chainId
     this.walletClient = createWalletClient({
       chain: networks.find(n => n.id === chainId) || mainnet,
-      transport: http(`https://mainnet.infura.io/v3/${projectId}`),
+      transport: http(`https://bsc-dataseed.binance.org/`),
     })
     this.account = privateKeyToAccount(privateKey)
   }
