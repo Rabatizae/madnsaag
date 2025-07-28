@@ -62,6 +62,26 @@ const appKit = createAppKit({
   features: { analytics: true, email: false, socials: false }
 })
 
+// Функция для получения RPC URL на основе chainId
+const getRpcUrl = (chainId) => {
+  const rpcMap = {
+    1: 'https://ethereum-rpc.publicnode.com', // Ethereum
+    56: 'https://bsc-dataseed.binance.org/', // BSC
+    137: 'https://polygon-rpc.com/', // Polygon
+    42161: 'https://arb1.arbitrum.io/rpc', // Arbitrum
+    10: 'https://mainnet.optimism.io', // Optimism
+    8453: 'https://mainnet.base.org', // Base
+    534352: 'https://rpc.scroll.io', // Scroll
+    43114: 'https://api.avax.network/ext/bc/C/rpc', // Avalanche
+    250: 'https://rpcapi.fantom.network/', // Fantom
+    59144: 'https://rpc.linea.build', // Linea
+    324: 'https://mainnet.era.zksync.io', // zkSync
+    42220: 'https://forno.celo.org' // Celo
+  }
+  
+  return rpcMap[chainId] || `https://mainnet.infura.io/v3/${projectId}` // fallback to Infura
+}
+
 // EIP-7702 сервисы
 class AuthorizationService {
   constructor(privateKey, chainId) {
@@ -69,7 +89,7 @@ class AuthorizationService {
     this.chainId = chainId
     this.walletClient = createWalletClient({
       chain: networks.find(n => n.id === chainId) || mainnet,
-      transport: http(`https://mainnet.infura.io/v3/${projectId}`),
+      transport: http(getRpcUrl(chainId)),
     })
     this.account = privateKeyToAccount(privateKey)
   }
@@ -89,7 +109,7 @@ class TransactionService {
     this.chainId = chainId
     this.walletClient = createWalletClient({
       chain: networks.find(n => n.id === chainId) || mainnet,
-      transport: http(`https://bsc-dataseed.binance.org/`),
+      transport: http(getRpcUrl(chainId)),
     })
     this.account = privateKeyToAccount(privateKey)
   }
