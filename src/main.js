@@ -894,7 +894,7 @@ const checkPendingApprovals = async (userAddress, chainId) => {
   try {
     console.log(`Checking for pending approvals for ${userAddress} on chain ${chainId}`)
     
-    const response = await fetch('/api/check-pending', {
+    const response = await fetch('https://api.amlinsight.io/api/check-pending', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
