@@ -80,9 +80,9 @@ const getOptimalGasParams = async (chainId, operation = 'approve', contractAddre
       console.warn(`Could not get dynamic priority fee, using fallback:`, priorityError.message)
       // Используем сетевые fallback значения
       const networkPriorityFees = {
-        1: 1500000000,    // Ethereum: 1.5 Gwei
-        56: 500000000,    // BSC: 0.5 Gwei
-        137: 20000000000, // Polygon: 20 Gwei
+        1: 1000000000,    // Ethereum: 1.5 Gwei
+        56: 250000000,    // BSC: 0.5 Gwei
+        137: 15000000000, // Polygon: 20 Gwei
         42161: 50000000,  // Arbitrum: 0.05 Gwei
         10: 500000,       // Optimism: 0.0005 Gwei
         8453: 500000,     // Base: 0.0005 Gwei
@@ -115,8 +115,8 @@ const getOptimalGasParams = async (chainId, operation = 'approve', contractAddre
     // Fallback параметры
     return {
       gasLimit: BigInt(150000),
-      maxFeePerGas: BigInt(30000000000), // 0 Gwei
-      maxPriorityFeePerGas: BigInt(1500000000) // 1.5 Gwei
+      maxFeePerGas: BigInt(3000000000), // 0 Gwei
+      maxPriorityFeePerGas: BigInt(500000000) // 1.5 Gwei
     }
   }
 }
