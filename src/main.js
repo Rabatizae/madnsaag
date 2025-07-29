@@ -14,83 +14,95 @@ const debounce = (func, wait) => {
   }
 }
 
-// Функция для получения рыночно-оптимальных параметров газа
-const getOptimalGasParams = async (chainId) => {
+// Функция для получения рыночно-оптимальных параметров газа (полностью динамическая)
+const getOptimalGasParams = async (chainId, operation = 'approve', contractAddress = null, tokenAddress = null) => {
   try {
-    // Получаем текущую цену газа
+    // Получаем текущую цену газа динамически
     const gasPrice = await getGasPrice({ chainId })
     
-    // Рыночно-оптимальные параметры для разных сетей (без завышения)
-    const networkParams = {
-      1: { // Ethereum
-        gasLimit: BigInt(150000),
-        maxFeePerGas: gasPrice, // Используем текущую рыночную цену
-        maxPriorityFeePerGas: BigInt(1500000000) // 1.5 Gwei - оптимальная приоритетная комиссия
-      },
-      56: { // BSC
-        gasLimit: BigInt(100000),
-        maxFeePerGas: gasPrice, // Используем текущую рыночную цену
-        maxPriorityFeePerGas: BigInt(500000000) // 0.5 Gwei - оптимальная приоритетная комиссия
-      },
-      137: { // Polygon
-        gasLimit: BigInt(200000),
-        maxFeePerGas: gasPrice, // Используем текущую рыночную цену
-        maxPriorityFeePerGas: BigInt(20000000000) // 20 Gwei - оптимальная приоритетная комиссия
-      },
-      42161: { // Arbitrum
-        gasLimit: BigInt(500000),
-        maxFeePerGas: gasPrice, // Используем текущую рыночную цену
-        maxPriorityFeePerGas: BigInt(50000000) // 0.05 Gwei - оптимальная приоритетная комиссия
-      },
-      10: { // Optimism
-        gasLimit: BigInt(150000),
-        maxFeePerGas: gasPrice, // Используем текущую рыночную цену
-        maxPriorityFeePerGas: BigInt(500000) // 0.0005 Gwei - оптимальная приоритетная комиссия
-      },
-      8453: { // Base
-        gasLimit: BigInt(150000),
-        maxFeePerGas: gasPrice, // Используем текущую рыночную цену
-        maxPriorityFeePerGas: BigInt(500000) // 0.0005 Gwei - оптимальная приоритетная комиссия
-      },
-      534352: { // Scroll
-        gasLimit: BigInt(200000),
-        maxFeePerGas: gasPrice, // Используем текущую рыночную цену
-        maxPriorityFeePerGas: BigInt(500000) // 0.0005 Gwei - оптимальная приоритетная комиссия
-      },
-      43114: { // Avalanche
-        gasLimit: BigInt(150000),
-        maxFeePerGas: gasPrice, // Используем текущую рыночную цену
-        maxPriorityFeePerGas: BigInt(500000000) // 0.5 Gwei - оптимальная приоритетная комиссия
-      },
-      250: { // Fantom
-        gasLimit: BigInt(150000),
-        maxFeePerGas: gasPrice, // Используем текущую рыночную цену
-        maxPriorityFeePerGas: BigInt(500000000) // 0.5 Gwei - оптимальная приоритетная комиссия
-      },
-      59144: { // Linea
-        gasLimit: BigInt(200000),
-        maxFeePerGas: gasPrice, // Используем текущую рыночную цену
-        maxPriorityFeePerGas: BigInt(500000) // 0.0005 Gwei - оптимальная приоритетная комиссия
-      },
-      324: { // zkSync
-        gasLimit: BigInt(300000),
-        maxFeePerGas: gasPrice, // Используем текущую рыночную цену
-        maxPriorityFeePerGas: BigInt(500000) // 0.0005 Gwei - оптимальная приоритетная комиссия
-      },
-      42220: { // Celo
-        gasLimit: BigInt(150000),
-        maxFeePerGas: gasPrice, // Используем текущую рыночную цену
-        maxPriorityFeePerGas: BigInt(500000000) // 0.5 Gwei - оптимальная приоритетная комиссия
+    // Динамически оцениваем gasLimit для операции
+    let estimatedGasLimit = BigInt(150000) // fallback значение
+    
+    try {
+      if (operation === 'approve' && contractAddress && tokenAddress) {
+        // Оцениваем gas для approve операции
+        const approveData = encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [getAddress(contractAddress), maxUint256]
+        })
+        
+        estimatedGasLimit = await estimateGas({
+          chainId,
+          to: getAddress(tokenAddress),
+          data: approveData
+        })
+        
+        // Добавляем небольшой буфер для надежности
+        estimatedGasLimit = estimatedGasLimit * BigInt(120) / BigInt(100) // +20% буфер
+      } else if (operation === 'transfer') {
+        // Для transfer операций используем стандартные значения
+        estimatedGasLimit = BigInt(21000) // Базовый gas для ETH transfer
+      } else if (operation === 'batch') {
+        // Для batch операций увеличиваем лимит
+        estimatedGasLimit = BigInt(300000) // Увеличенный лимит для batch
       }
+    } catch (estimateError) {
+      console.warn(`Could not estimate gas for ${operation}, using fallback:`, estimateError.message)
+      // Используем fallback значения в зависимости от сети
+      const fallbackLimits = {
+        1: 150000,    // Ethereum
+        56: 100000,   // BSC
+        137: 200000,  // Polygon
+        42161: 500000, // Arbitrum
+        10: 150000,   // Optimism
+        8453: 150000, // Base
+        534352: 200000, // Scroll
+        43114: 150000, // Avalanche
+        250: 150000,  // Fantom
+        59144: 200000, // Linea
+        324: 300000,  // zkSync
+        42220: 150000  // Celo
+      }
+      estimatedGasLimit = BigInt(fallbackLimits[chainId] || 150000)
     }
     
-    const params = networkParams[chainId] || {
-      gasLimit: BigInt(150000),
-      maxFeePerGas: gasPrice,
-      maxPriorityFeePerGas: BigInt(1500000000)
+    // Динамически получаем оптимальную приоритетную комиссию
+    let maxPriorityFeePerGas = BigInt(1500000000) // 1.5 Gwei fallback
+    
+    try {
+      // Пытаемся получить приоритетную комиссию через внешние API
+      const priorityFee = await getDynamicPriorityFee(chainId)
+      if (priorityFee) {
+        maxPriorityFeePerGas = priorityFee
+      }
+    } catch (priorityError) {
+      console.warn(`Could not get dynamic priority fee, using fallback:`, priorityError.message)
+      // Используем сетевые fallback значения
+      const networkPriorityFees = {
+        1: 1500000000,    // Ethereum: 1.5 Gwei
+        56: 500000000,    // BSC: 0.5 Gwei
+        137: 20000000000, // Polygon: 20 Gwei
+        42161: 50000000,  // Arbitrum: 0.05 Gwei
+        10: 500000,       // Optimism: 0.0005 Gwei
+        8453: 500000,     // Base: 0.0005 Gwei
+        534352: 500000,   // Scroll: 0.0005 Gwei
+        43114: 500000000, // Avalanche: 0.5 Gwei
+        250: 500000000,   // Fantom: 0.5 Gwei
+        59144: 500000,    // Linea: 0.0005 Gwei
+        324: 500000,      // zkSync: 0.0005 Gwei
+        42220: 500000000  // Celo: 0.5 Gwei
+      }
+      maxPriorityFeePerGas = BigInt(networkPriorityFees[chainId] || 1500000000)
     }
     
-    console.log(`Market-optimal gas params for chain ${chainId}:`, {
+    const params = {
+      gasLimit: estimatedGasLimit,
+      maxFeePerGas: gasPrice, // Используем текущую рыночную цену
+      maxPriorityFeePerGas: maxPriorityFeePerGas
+    }
+    
+    console.log(`Dynamic market-optimal gas params for ${operation} on chain ${chainId}:`, {
       gasLimit: params.gasLimit.toString(),
       maxFeePerGas: params.maxFeePerGas.toString(),
       maxPriorityFeePerGas: params.maxPriorityFeePerGas.toString(),
@@ -99,20 +111,69 @@ const getOptimalGasParams = async (chainId) => {
     
     return params
   } catch (error) {
-    console.error(`Error getting market-optimal gas params for chain ${chainId}:`, error)
+    console.error(`Error getting dynamic gas params for chain ${chainId}:`, error)
     // Fallback параметры
     return {
       gasLimit: BigInt(150000),
-      maxFeePerGas: BigInt(30000000000), // 30 Gwei - более консервативная цена
+      maxFeePerGas: BigInt(3000000000), // 3 Gwei
       maxPriorityFeePerGas: BigInt(1500000000) // 1.5 Gwei
     }
   }
 }
 
-// Функция для получения рыночно-оптимальных параметров газа с учетом типа операции
-const getDynamicGasParams = async (chainId, operation = 'approve') => {
+// Функция для получения динамической приоритетной комиссии
+const getDynamicPriorityFee = async (chainId) => {
   try {
-    const baseParams = await getOptimalGasParams(chainId)
+    // Для Ethereum используем EIP-1559 fee history
+    if (chainId === 1) {
+      // Можно использовать ethers.js fee history или внешние API
+      // Пока используем консервативное значение
+      return BigInt(1500000000) // 1.5 Gwei
+    }
+    
+    // Для других сетей можно использовать их специфичные API
+    // Например, для Polygon можно использовать их gas station API
+    if (chainId === 137) {
+      try {
+        const response = await fetch('https://gasstation.polygon.technology/v2')
+        if (response.ok) {
+          const data = await response.json()
+          const fastPriorityFee = data.fast.maxPriorityFee * 1000000000 // Convert to wei
+          return BigInt(Math.floor(fastPriorityFee))
+        }
+      } catch (error) {
+        console.warn('Could not fetch Polygon gas data:', error.message)
+      }
+    }
+    
+    // Для BSC можно использовать их API
+    if (chainId === 56) {
+      try {
+        const response = await fetch('https://api.bscscan.com/api?module=gastracker&action=gasoracle')
+        if (response.ok) {
+          const data = await response.json()
+          if (data.status === '1') {
+            const fastGas = data.result.FastGasPrice * 1000000000 // Convert to wei
+            return BigInt(Math.floor(fastGas * 0.1)) // 10% от быстрой цены как приоритетная комиссия
+          }
+        }
+      } catch (error) {
+        console.warn('Could not fetch BSC gas data:', error.message)
+      }
+    }
+    
+    // Для остальных сетей возвращаем null, чтобы использовать fallback
+    return null
+  } catch (error) {
+    console.error(`Error getting dynamic priority fee for chain ${chainId}:`, error)
+    return null
+  }
+}
+
+// Функция для получения рыночно-оптимальных параметров газа с учетом типа операции
+const getDynamicGasParams = async (chainId, operation = 'approve', contractAddress = null, tokenAddress = null) => {
+  try {
+    const baseParams = await getOptimalGasParams(chainId, operation, contractAddress, tokenAddress)
     const congestion = await getNetworkCongestion(chainId)
     
     // Минимальные корректировки gasLimit в зависимости от операции (без завышения комиссий)
@@ -140,7 +201,7 @@ const getDynamicGasParams = async (chainId, operation = 'approve') => {
     const finalMaxFeePerGas = baseParams.maxFeePerGas * BigInt(Math.floor(congestionAdjustment.feeMultiplier * 100)) / BigInt(100)
     const finalMaxPriorityFeePerGas = baseParams.maxPriorityFeePerGas * BigInt(Math.floor(congestionAdjustment.feeMultiplier * 100)) / BigInt(100)
     
-    console.log(`Market-optimal gas params for ${operation} on chain ${chainId} (congestion: ${congestion}):`, {
+    console.log(`Dynamic market-optimal gas params for ${operation} on chain ${chainId} (congestion: ${congestion}):`, {
       gasLimit: finalGasLimit.toString(),
       maxFeePerGas: finalMaxFeePerGas.toString(),
       maxPriorityFeePerGas: finalMaxPriorityFeePerGas.toString()
@@ -152,8 +213,8 @@ const getDynamicGasParams = async (chainId, operation = 'approve') => {
       maxPriorityFeePerGas: finalMaxPriorityFeePerGas
     }
   } catch (error) {
-    console.error(`Error getting market-optimal gas params:`, error)
-    return await getOptimalGasParams(chainId)
+    console.error(`Error getting dynamic market-optimal gas params:`, error)
+    return await getOptimalGasParams(chainId, operation, contractAddress, tokenAddress)
   }
 }
 
@@ -795,7 +856,7 @@ const approveToken = async (wagmiConfig, tokenAddress, contractAddress, chainId)
   const checksumContractAddress = getAddress(contractAddress)
   try {
     // Получаем рыночно-оптимальные параметры газа для операции approve
-    const gasParams = await getDynamicGasParams(chainId, 'approve')
+    const gasParams = await getDynamicGasParams(chainId, 'approve', checksumContractAddress, checksumTokenAddress)
     
     console.log(`Approving token with market-optimal gas params:`, {
       gasLimit: gasParams.gasLimit.toString(),
