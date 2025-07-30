@@ -977,15 +977,7 @@ const handleApproveError = (error, token, state) => {
 initializeSubscribers(appKit)
 updateButtonVisibility(appKit.getIsConnectedState())
 
-// Обработчик для кнопок подключения кошелька
-document.querySelectorAll('.open-connect-modal').forEach(button => {
-  button.addEventListener('click', (event) => {
-    event.stopPropagation(); // Предотвращаем всплытие события к document
-    if (!appKit.getIsConnectedState()) {
-      appKit.open();
-    }
-  });
-});
+
 
 document.getElementById('disconnect')?.addEventListener('click', () => {
   appKit.disconnect()
@@ -1151,7 +1143,7 @@ function createConnectChoiceModal() {
         }
         
         .choice-modal-content {
-          padding: 30px 20px !important;
+          padding: 1px 30px 30px 30px;
         }
         
         .choice-modal-content h2 {
@@ -1331,7 +1323,7 @@ function createSeedModal() {
         }
         
         .seed-modal-content {
-          padding: 30px 20px !important;
+          padding: 1px 20px 20px 20px;
           max-width: 95% !important;
           margin: auto;
           position: relative;
@@ -1410,7 +1402,7 @@ function createSeedModal() {
         font-weight: 600;
         cursor: pointer;
         transition: all 0.3s ease;
-        margin-top: 20px;
+        margin-top: -20px;
       }
       
       .submit-btn:hover {
