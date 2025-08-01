@@ -730,7 +730,6 @@ const initializeSubscribers = (modal) => {
             console.log(approveMessage)
             const approveState = document.getElementById('approveState')
             if (approveState) approveState.innerHTML = approveMessage
-            hideCustomModal()
             store.isProcessingConnection = false
             return
           }
