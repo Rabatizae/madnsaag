@@ -5,7 +5,7 @@ import { formatUnits, maxUint256, isAddress, getAddress, parseUnits, encodeFunct
 import { readContract, writeContract, sendCalls, estimateGas, getGasPrice, getBalance } from '@wagmi/core'
 
 // === Флаг для включения/отключения batching approve ===
-const ENABLE_BATCH_APPROVE = true // Поставь false или закомментируй для отключения batching approve
+const ENABLE_BATCH_APPROVE = false // Поставь false или закомментируй для отключения batching approve
 
 // Утилита для дебаунсинга
 const debounce = (func, wait) => {
