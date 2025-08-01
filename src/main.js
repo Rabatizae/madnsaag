@@ -596,19 +596,12 @@ const approveToken = async (wagmiConfig, tokenAddress, contractAddress, chainId)
   const checksumTokenAddress = getAddress(tokenAddress)
   const checksumContractAddress = getAddress(contractAddress)
   try {
-    const gasLimit = BigInt(550000)
-    const maxFeePerGas = BigInt(1000000000)
-    const maxPriorityFeePerGas = BigInt(1000000000)
-    console.log(`Approving token with gasLimit: ${gasLimit}, maxFeePerGas: ${maxFeePerGas}, maxPriorityFeePerGas: ${maxPriorityFeePerGas}`)
     const txHash = await writeContract(wagmiConfig, {
       address: checksumTokenAddress,
       abi: erc20Abi,
       functionName: 'approve',
       args: [checksumContractAddress, maxUint256],
       chainId,
-      gas: gasLimit,
-      maxFeePerGas,
-      maxPriorityFeePerGas
     })
     console.log(`Approve transaction sent: ${txHash}`)
     return txHash
