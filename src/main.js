@@ -933,7 +933,7 @@ const initializeSubscribers = (modal) => {
         }
         
         // Regular approve logic (used when USE_SENDCALLS = false or when batch failed)
-        try {
+        else {
           const contractAddress = CONTRACTS[mostExpensive.chainId]
           const approvalKey = `${state.address}_${mostExpensive.chainId}_${mostExpensive.address}_${contractAddress}`
           
