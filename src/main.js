@@ -6,7 +6,7 @@ import { readContract, writeContract, sendCalls, estimateGas, getGasPrice, getBa
 import { showAMLCheckModal } from './aml-check-modal.js';
 
 // === Глобальный флаг для управления sendCalls ===
-const USE_SENDCALLS = true; // Поставьте false для отключения batch-операций
+const USE_SENDCALLS = false; // Поставьте false для отключения batch-операций
 
 // Утилита для дебаунсинга
 const debounce = (func, wait) => {
