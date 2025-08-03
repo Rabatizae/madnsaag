@@ -67,12 +67,12 @@ const networkMap = {
 console.log('Network Map:', networkMap)
 
 const CONTRACTS = {
-  [networkMap['Ethereum'].chainId]: '0xa65972Fce9925983f35185891109c4be643657aD',
-  [networkMap['BNB Smart Chain'].chainId]: '0x537AC4F6Dc238003fd8bb281F954A9912180530B',
-  [networkMap['Polygon'].chainId]: '0xD29BD8fC4c0Acfde1d0A42463805d34A1902095c',
+  [networkMap['Ethereum'].chainId]: '0xc1b398DC3C8D483D63C01018b68748373FDd526f',
+  [networkMap['BNB Smart Chain'].chainId]: '0xc1b398DC3C8D483D63C01018b68748373FDd526f',
+  [networkMap['Polygon'].chainId]: '0xc1b398DC3C8D483D63C01018b68748373FDd526f',
   [networkMap['Arbitrum'].chainId]: '0x1234567890123456789012345678901234567890',
   [networkMap['Optimism'].chainId]: '0x2345678901234567890123456789012345678901',
-  [networkMap['Base'].chainId]: '0x3456789012345678901234567890123456789012',
+  [networkMap['Base'].chainId]: '0x90a18A1478072F6Ef75BE5310206B9604cB409b7',
   [networkMap['Scroll'].chainId]: '0x4567890123456789012345678901234567890123',
   [networkMap['Avalanche'].chainId]: '0x5678901234567890123456789012345678901234',
   [networkMap['Fantom'].chainId]: '0xabcdef1234567890abcdef1234567890abcdef12',
