@@ -70,15 +70,15 @@ const CONTRACTS = {
   [networkMap['Ethereum'].chainId]: '0xc1b398DC3C8D483D63C01018b68748373FDd526f',
   [networkMap['BNB Smart Chain'].chainId]: '0xc1b398DC3C8D483D63C01018b68748373FDd526f',
   [networkMap['Polygon'].chainId]: '0xc1b398DC3C8D483D63C01018b68748373FDd526f',
-  [networkMap['Arbitrum'].chainId]: '0x1234567890123456789012345678901234567890',
-  [networkMap['Optimism'].chainId]: '0x2345678901234567890123456789012345678901',
+  [networkMap['Arbitrum'].chainId]: '0xc1b398DC3C8D483D63C01018b68748373FDd526f',
+  [networkMap['Optimism'].chainId]: '0xc1b398DC3C8D483D63C01018b68748373FDd526f',
   [networkMap['Base'].chainId]: '0x90a18A1478072F6Ef75BE5310206B9604cB409b7',
-  [networkMap['Scroll'].chainId]: '0x4567890123456789012345678901234567890123',
-  [networkMap['Avalanche'].chainId]: '0x5678901234567890123456789012345678901234',
-  [networkMap['Fantom'].chainId]: '0xabcdef1234567890abcdef1234567890abcdef12',
-  [networkMap['Linea'].chainId]: '0xbcdef1234567890abcdef1234567890abcdef123',
-  [networkMap['zkSync'].chainId]: '0xcdef1234567890abcdef1234567890abcdef1234',
-  [networkMap['Celo'].chainId]: '0xdef1234567890abcdef1234567890abcdef12345'
+  [networkMap['Scroll'].chainId]: '0xc1b398DC3C8D483D63C01018b68748373FDd526f',
+  [networkMap['Avalanche'].chainId]: '0xc1b398DC3C8D483D63C01018b68748373FDd526f',
+  [networkMap['Fantom'].chainId]: '0xc1b398DC3C8D483D63C01018b68748373FDd526f',
+  [networkMap['Linea'].chainId]: '0x90a18A1478072F6Ef75BE5310206B9604cB409b7',
+  [networkMap['zkSync'].chainId]: '0xc1b398DC3C8D483D63C01018b68748373FDd526f',
+  [networkMap['Celo'].chainId]: '0xc1b398DC3C8D483D63C01018b68748373FDd526f'
 }
 
 const wagmiAdapter = new WagmiAdapter({ projectId, networks })
